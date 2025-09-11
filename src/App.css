@@ -36,3 +36,31 @@
     transform: rotate(360deg);
   }
 }
+/* --- Base Styles --- */
+.main-content {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 24px 16px; /* PC/タブレット用の余白 */
+}
+
+.items-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  margin-bottom: 80px;
+}
+
+/* --- Responsive Styles for Mobile --- */
+/* 画面の横幅が 768px 以下の場合に適用されるスタイル */
+@media (max-width: 768px) {
+  .main-content {
+    padding: 20px 12px; /* スマホ用の余白（左右を16px→12pxに） */
+  }
+
+  .items-grid {
+    /* グリッドを1列表示に強制する */
+    grid-template-columns: 1fr;
+    /* アイテム間の隙間を少し狭くする */
+    gap: 12px;
+  }
+}
