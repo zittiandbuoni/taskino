@@ -14,7 +14,7 @@ interface TaskinoItem {
   id: string;
   title: string;
   description?: string;
-  category: 'travel' | 'food' | 'shopping' | 'experience' | 'task';
+  category: 'go' | 'eat' | 'buy' | 'do' | 'other';
   location?: {
     name: string;
     address: string;
@@ -31,12 +31,12 @@ interface Room {
   created_at: string;
 }
 const categories = [
-  { id: 'all', label: 'すべて', icon: Search, color: '#EFB509' },
-  { id: 'travel', label: '旅行・おでかけ', icon: Plane, color: '#EFB509' },
-  { id: 'food', label: 'グルメ', icon: UtensilsCrossed, color: '#EFB509' },
-  { id: 'shopping', label: '買い物', icon: ShoppingBag, color: '#EFB509' },
-  { id: 'experience', label: '体験', icon: Palette, color: '#EFB509' },
-  { id: 'task', label: 'タスク', icon: CheckSquare, color: '#EFB509' },
+  { id: 'all', label: 'All', icon: Search, color: '#EFB509' },
+  { id: 'go', label: 'To Go', icon: MapPin, color: '#EFB509' },
+  { id: 'eat', label: 'To Eat', icon: UtensilsCrossed, color: '#EFB509' },
+  { id: 'buy', label: 'To Buy', icon: ShoppingBag, color: '#EFB509' },
+  { id: 'do', label: 'To Do', icon: CheckSquare, color: '#EFB509' },
+  { id: 'other', label: 'Other', icon: Palette, color: '#EFB509' },
 ];
 function QRCodeComponent({ shareCode, currentRoom }: { shareCode?: string, currentRoom: Room | null }) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
@@ -58,17 +58,17 @@ function QRCodeComponent({ shareCode, currentRoom }: { shareCode?: string, curre
   }, [shareCode, currentRoom]);
 
   if (!qrCodeUrl) {
-    return <div>QRコード生成中...</div>;
+    return <div>Generating QR Code...</div>;
   }
 
   return (
     <div>
       <img src={qrCodeUrl} alt="QR Code" style={{ width: '256px', height: '256px' }} />
       <p style={{ marginTop: '16px', color: '#666', fontSize: '14px' }}>
-        このQRコードをスマホで読み取って共有
+        Share this QR code to join the room
       </p>
       <p style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
-        ルーム: {currentRoom?.name}
+        room: {currentRoom?.name}
       </p>
     </div>
   );
@@ -83,9 +83,10 @@ function TaskinoApp() {
   const [newItem, setNewItem] = useState({
     title: '',
     description: '',
-    category: 'travel' as 'travel' | 'food' | 'shopping' | 'experience' | 'task',
+    category: 'go' as 'go' | 'eat' | 'buy' | 'do' | 'other',
     location: { name: '', address: '' },
-    deadline: ''
+    deadline: '',
+    createdBy: ''
   });
   
   const [items, setItems] = useState<TaskinoItem[]>([]);
@@ -95,18 +96,20 @@ const [error, setError] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TaskinoItem | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [showQR, setShowQR] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
-  // Supabaseからデータを取得
+  // fetch data from Supabase
   const fetchItems = async () => {
     if (!currentRoom) return;
     
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('taskino_items')
-        .select('*')
-        .eq('room_id', currentRoom.id)
-        .order('created_at', { ascending: false });
+       .from('taskino_items')
+       .select('*')
+       .eq('room_id', currentRoom.id)
+       .eq('archived', false)
+       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
@@ -124,12 +127,67 @@ const [error, setError] = useState<string | null>(null);
 
     setItems(formattedItems);
   } catch (error: any) {
-    console.error('データの取得に失敗しました:', error);
+    console.error('failed to fetch data', error);
     setError(error.message);
   } finally {
     setLoading(false);
   }
 };
+<button 
+  onClick={async () => {
+    console.log('archive button clicked');
+    const newShowArchived = !showArchived;
+    setShowArchived(newShowArchived);
+    
+    if (newShowArchived) {
+      try {
+        setLoading(true);
+        console.log('archive items fetch started', currentRoom?.id);
+        const { data, error } = await supabase
+          .from('taskino_items')
+          .select('*')
+          .eq('room_id', currentRoom?.id)
+          .eq('archived', true)
+          .order('created_at', { ascending: false });
+  
+        console.log('archive items fetch result:', { data, error }); // ← この行を追加
+  
+        if (error) throw error;
+  
+        const formattedItems = data?.map((item: any) => ({
+          ...item,
+          created_at: new Date(item.created_at).toISOString().split('T')[0],
+          deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
+        })) || [];
+  
+        console.log('archive items formatted:', formattedItems); // ← この行を追加
+        setItems(formattedItems);
+      } catch (error: any) {
+        console.error('archive items fetch failed:', error);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      fetchItems();
+    }
+  }}
+    style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 16px',
+    backgroundColor: showArchived ? '#EFB509' : 'rgba(255, 255, 255, 0.2)',
+    color: showArchived ? '#002C54' : 'white',
+    border: 'none',
+    borderRadius: '20px',
+    fontSize: '14px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    marginLeft: '8px'
+  }}
+>
+  📁 {showArchived ? 'Normal' : 'Archive'}
+</button>
 const fetchRoom = async () => {
   if (!shareCode) return;
   
@@ -143,8 +201,8 @@ const fetchRoom = async () => {
     if (error) throw error;
     setCurrentRoom(data);
   } catch (error) {
-    console.error('ルーム取得エラー:', error);
-    setError('ルームが見つかりません');
+    console.error('room fetch error:', error);
+    setError('room not found');
   }
 };
 
@@ -157,7 +215,7 @@ useEffect(() => {
     fetchItems();
   }
 }, [currentRoom]);
-// リアルタイム購読の設定
+// realtime subscription
 useEffect(() => {
   if (!currentRoom) return;
 
@@ -172,7 +230,7 @@ useEffect(() => {
         filter: `room_id=eq.${currentRoom.id}`
       },
       (payload) => {
-        console.log('リアルタイム更新:', payload);
+        console.log('realtime update:', payload);
         
         if (payload.eventType === 'INSERT') {
           const newItem = {
@@ -182,7 +240,7 @@ useEffect(() => {
           } as TaskinoItem;
           
           setItems(prevItems => {
-            // 重複チェック
+            // duplicate check
             if (prevItems.some(item => item.id === newItem.id)) {
               return prevItems;
             }
@@ -209,12 +267,12 @@ useEffect(() => {
     )
     .subscribe();
 
-  // クリーンアップ
+  // cleanup
   return () => {
     subscription.unsubscribe();
   };
 }, [currentRoom]);
-// エラー表示
+// error display
 if (error) {
   return (
     <div style={{ 
@@ -226,15 +284,15 @@ if (error) {
       color: 'white'
     }}>
       <div style={{ textAlign: 'center' }}>
-        <h2 style={{ color: '#EFB509', marginBottom: '16px' }}>エラー</h2>
+        <h2 style={{ color: '#EFB509', marginBottom: '16px' }}>Error</h2>
         <p>{error}</p>
-        <button onClick={() => { setError(null); fetchItems(); }}>再試行</button>
+        <button onClick={() => { setError(null); fetchItems(); }}>Retry</button>
       </div>
     </div>
   );
 }
 
-// ローディング表示
+// loading display
 if (loading) {
   return (
     <div style={{ 
@@ -245,7 +303,7 @@ if (loading) {
       justifyContent: 'center',
       color: 'white'
     }}>
-      <p>読み込み中...</p>
+      <p>Loading...</p>
     </div>
   );
 }
@@ -268,117 +326,157 @@ if (loading) {
       backgroundColor: '#16253D',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
-      {/* Header */}
-      <header style={{ 
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        padding: '16px',
-        backgroundColor: '#002C54',
-        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
-      }}>
-        <div style={{ 
-          maxWidth: '1024px',
-          margin: '0 auto',
+{/* Header */}
+<header style={{ 
+  position: 'sticky',
+  top: 0,
+  zIndex: 50,
+  padding: '16px',
+  backgroundColor: '#002C54',
+  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
+}}>
+  <div style={{ 
+    maxWidth: '1024px',
+    margin: '0 auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <button 
+        onClick={() => navigate('/')}
+        style={{
+          padding: '8px',
+          color: 'rgba(255, 255, 255, 0.8)',
+          backgroundColor: 'transparent',
+          border: 'none',
+          borderRadius: '8px',
+          cursor: 'pointer'
+        }}
+      >
+        ← BACK
+      </button>
+      <div style={{ 
+        fontSize: '28px',
+        fontWeight: 'bold',
+        color: 'white',
+        letterSpacing: '-0.5px'
+      }}>taskino</div>
+    </div>
+    
+    {/* button group */}
+    <div style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '8px',
+      flexWrap: 'wrap'
+    }}>
+      <button 
+        onClick={() => {
+          console.log('QR button clicked');
+          setShowQR(!showQR);
+        }}
+        style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button 
-  onClick={() => navigate('/')}
-  style={{
-    padding: '8px',
-    color: 'rgba(255, 255, 255, 0.8)',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    marginRight: '12px'
-  }}
->
-  ← 戻る
-</button>
-            <div style={{ 
-              fontSize: '28px',
-              fontWeight: 'bold',
-              color: 'white',
-              letterSpacing: '-0.5px'
-            }}>taskino</div>
-            <div style={{
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  padding: '6px 12px',
-  backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  borderRadius: '20px',
-  fontSize: '14px',
-  color: 'rgba(255, 255, 255, 0.8)'
-}}>
-  <Users size={16} />
-  <span>リアルタイム共有中</span>
-</div>
-<button 
-  onClick={() => {
-    console.log('QRボタンクリック');
-    setShowQR(!showQR);
-  }}
-  style={{
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    color: 'white',
-    border: 'none',
-    borderRadius: '20px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    marginLeft: '8px'
-  }}
->
-  📱 QR
-</button>
-<button 
-  onClick={() => {
-    const shareUrl = `${window.location.origin}/room/${shareCode}`;
-    navigator.clipboard.writeText(shareUrl).then(() => {
-      alert('共有URLをコピーしました！');
-    }).catch(() => {
-      prompt('以下のURLをコピーしてください:', shareUrl);
-    });
-  }}
-  style={{
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
-    backgroundColor: '#EFB509',
-    color: '#002C54',
-    border: 'none',
-    borderRadius: '20px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer'
-  }}
->
-  <Share2 size={16} />
-  共有
-</button>
-          </div>
-          <button style={{
-            padding: '8px',
-            color: 'rgba(255, 255, 255, 0.8)',
-            backgroundColor: 'transparent',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer'
-          }}>
-            <Menu size={20} />
-          </button>
-        </div>
-      </header>
+          gap: '4px',
+          padding: '6px 12px',
+          backgroundColor: 'rgba(255, 255, 255, 0.2)',
+          color: 'white',
+          border: 'none',
+          borderRadius: '16px',
+          fontSize: '12px',
+          fontWeight: '600',
+          cursor: 'pointer'
+        }}
+      >
+        📱
+      </button>
+      
+      <button 
+        onClick={() => {
+          const shareUrl = `${window.location.origin}/room/${shareCode}`;
+          navigator.clipboard.writeText(shareUrl).then(() => {
+            alert('Share URL copied to clipboard!');
+          }).catch(() => {
+            prompt('Please copy the following url:', shareUrl);
+          });
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '6px 12px',
+          backgroundColor: '#EFB509',
+          color: '#002C54',
+          border: 'none',
+          borderRadius: '16px',
+          fontSize: '12px',
+          fontWeight: '600',
+          cursor: 'pointer'
+        }}
+      >
+        <Share2 size={14} />
+        Share
+      </button>
+      
+      <button 
+        onClick={async () => {
+          console.log('archive button clicked');
+          const newShowArchived = !showArchived;
+          setShowArchived(newShowArchived);
+          
+          if (newShowArchived) {
+            try {
+              setLoading(true);
+              console.log('archive items fetch started', currentRoom?.id);
+              const { data, error } = await supabase
+                .from('taskino_items')
+                .select('*')
+                .eq('room_id', currentRoom?.id)
+                .eq('archived', true)
+                .order('created_at', { ascending: false });
+
+              console.log('archive items fetch result:', { data, error });
+
+              if (error) throw error;
+
+              const formattedItems = data?.map((item: any) => ({
+                ...item,
+                created_at: new Date(item.created_at).toISOString().split('T')[0],
+                deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
+              })) || [];
+
+              console.log('formatted items:', formattedItems);
+              setItems(formattedItems);
+            } catch (error: any) {
+              console.error('archive items fetch failed:', error);
+            } finally {
+              setLoading(false);
+            }
+          } else {
+            fetchItems();
+          }
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          padding: '6px 12px',
+          backgroundColor: showArchived ? '#EFB509' : 'rgba(255, 255, 255, 0.2)',
+          color: showArchived ? '#002C54' : 'white',
+          border: 'none',
+          borderRadius: '16px',
+          fontSize: '12px',
+          fontWeight: '600',
+          cursor: 'pointer'
+        }}
+      >
+        📁
+      </button>
+    </div>
+  </div>
+</header>
 
       <div style={{ maxWidth: '1024px', margin: '0 auto', padding: '24px 16px' }}>
         {/* Search Bar */}
@@ -392,7 +490,7 @@ if (loading) {
           }} />
           <input
             type="text"
-            placeholder="アイテムを検索..."
+            placeholder="Search items"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
@@ -463,9 +561,10 @@ if (loading) {
                 setNewItem({
                   title: item.title,
                   description: item.description || '',
-                  category: item.category,
+                  category: item.category as 'go' | 'eat' | 'buy' | 'do' | 'other',
                   location: item.location || { name: '', address: '' },
-                  deadline: item.deadline || ''
+                  deadline: item.deadline || '',
+                  createdBy: item.created_by || ''
                 });
                 setIsEditModalOpen(true);
               }}
@@ -524,7 +623,7 @@ if (loading) {
       if (error) throw error;
       await fetchItems();
     } catch (error: any) {
-      console.error('完了状態の更新に失敗:', error);
+      console.error('failed to update completed status:', error);
     }
   }}
   style={{
@@ -613,7 +712,7 @@ if (loading) {
   fontWeight: '600',
   color: '#002C54'
 }}>
-  {item.created_by}が追加
+  {item.created_by} added
 </span>
 <span style={{
   fontSize: '12px',
@@ -638,7 +737,7 @@ if (loading) {
               marginBottom: '8px',
               color: 'white'
             }}>
-              アイテムが見つかりません
+              No items found
             </h3>
             <p style={{
               fontSize: '14px',
@@ -646,7 +745,7 @@ if (loading) {
               fontWeight: '500',
               color: 'white'
             }}>
-              検索条件を変更するか、新しいアイテムを追加してみてください
+              Please change the search criteria or add a new item
             </p>
           </div>
         )}
@@ -688,7 +787,7 @@ if (loading) {
                 fontWeight: 'bold',
                 color: '#002C54',
                 margin: 0
-              }}>新しいアイテムを追加</h2>
+              }}>Add New Item</h2>
               <button
                 onClick={() => setIsModalOpen(false)}
                 style={{
@@ -709,12 +808,12 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>タイトル *</label>
+              }}>Title *</label>
               <input
                 type="text"
                 value={newItem.title}
                 onChange={(e) => setNewItem({...newItem, title: e.target.value})}
-                placeholder="例：渋谷の新しいカフェ"
+                placeholder="Example: New cafe in Shibuya"
                 style={{
                   width: '100%',
                   padding: '12px',
@@ -734,7 +833,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>カテゴリ *</label>
+              }}>Category *</label>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
@@ -775,11 +874,11 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>説明</label>
+              }}>Description</label>
               <textarea
                 value={newItem.description}
                 onChange={(e) => setNewItem({...newItem, description: e.target.value})}
-                placeholder="詳細な説明を入力してください"
+                placeholder="Please enter a detailed description"
                 style={{
                   width: '100%',
                   padding: '12px',
@@ -800,7 +899,7 @@ if (loading) {
     fontWeight: '600',
     color: '#002C54',
     marginBottom: '8px'
-  }}>場所</label>
+  }}>Place</label>
 <input
   type="text"
   value={newItem.location.name}
@@ -808,7 +907,7 @@ if (loading) {
     ...newItem, 
     location: {...newItem.location, name: e.target.value}
   })}
-  placeholder="例：渋谷駅、東京タワー"
+  placeholder="Example: Shibuya Station, Tokyo Tower"
   style={{
     width: '100%',
     padding: '12px',
@@ -826,7 +925,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>日付</label>
+              }}>Date</label>
               <input
                 type="date"
                 value={newItem.deadline}
@@ -841,6 +940,29 @@ if (loading) {
                 }}
               />
             </div>
+            <div style={{ marginBottom: '32px' }}>
+  <label style={{
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#002C54',
+    marginBottom: '8px'
+  }}>Your name *</label>
+  <input
+    type="text"
+    value={newItem.createdBy}
+    onChange={(e) => setNewItem({...newItem, createdBy: e.target.value})}
+    placeholder="Your name"
+    style={{
+      width: '100%',
+      padding: '12px',
+      border: '2px solid #E5E5E5',
+      borderRadius: '8px',
+      fontSize: '16px',
+      outline: 'none'
+    }}
+  />
+</div>
 
             <div style={{
               display: 'flex',
@@ -859,14 +981,13 @@ if (loading) {
                   fontWeight: '600',
                   cursor: 'pointer'
                 }}
-              >キャンセル</button>
+              >Cancel</button>
               <button
                 onClick={async () => {
-                  console.log('追加ボタンクリック', newItem);
+                  console.log('add button clicked', newItem);
                   
-                  if (newItem.title.trim()) {
-                    try {
-                      console.log('Supabaseに送信中...');
+                  if (newItem.title.trim() && newItem.createdBy.trim()) {                    try {
+                      console.log('Supabase sending...');
                       const insertData = {
                         title: newItem.title,
                         description: newItem.description || null,
@@ -876,18 +997,18 @@ if (loading) {
                           address: newItem.location.address || ''
                         } : null,
                         deadline: newItem.deadline || null,
-                        created_by: 'あなた',
+                        created_by: newItem.createdBy || 'Anonymous',
                         room_id: currentRoom?.id
                       };
                       
-                      console.log('送信データ:', insertData);
+                      console.log('send data:', insertData);
                       
                       const { data, error } = await supabase
                         .from('taskino_items')
                         .insert([insertData])
                         .select();
                 
-                      console.log('Supabaseレスポンス:', { data, error });
+                      console.log('Supabase response:', { data, error });
                       
                       if (error) throw error;
                       
@@ -896,29 +1017,30 @@ if (loading) {
                       setNewItem({
                         title: '',
                         description: '',
-                        category: 'travel',
+                        category: 'go',
                         location: { name: '', address: '' },
-                        deadline: ''
+                        deadline: '',
+                        createdBy: ''
                       });
                     } catch (error: any) {
-                      console.error('追加エラー:', error);
-                      alert('追加に失敗しました: ' + error.message);
+                      console.error('add error:', error);
+                      alert('add failed: ' + error.message);
                     }
                   } else {
-                    console.log('タイトルが空です');
+                    console.log('title is empty');
                   }
                 }}
                 style={{
                   padding: '12px 24px',
                   border: 'none',
-                  backgroundColor: newItem.title.trim() ? '#EFB509' : '#CCC',
-                  color: newItem.title.trim() ? '#002C54' : '#666',
+                  backgroundColor: (newItem.title.trim() && newItem.createdBy.trim()) ? '#EFB509' : '#CCC',
+                  color: (newItem.title.trim() && newItem.createdBy.trim()) ? '#002C54' : '#666',
                   borderRadius: '8px',
                   fontSize: '16px',
                   fontWeight: '600',
-                  cursor: newItem.title.trim() ? 'pointer' : 'not-allowed'
+                  cursor: (newItem.title.trim() && newItem.createdBy.trim()) ? 'pointer' : 'not-allowed'
                 }}
-              >追加</button>
+              >Add</button>
             </div>
           </div>
         </div>
@@ -960,7 +1082,7 @@ if (loading) {
                 fontWeight: 'bold',
                 color: '#002C54',
                 margin: 0
-              }}>アイテムを編集</h2>
+              }}>Edit Item</h2>
               <button
                 onClick={() => {
                   setIsEditModalOpen(false);
@@ -984,7 +1106,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>タイトル *</label>
+              }}>Title *</label>
               <input
                 type="text"
                 value={newItem.title}
@@ -1007,7 +1129,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>カテゴリ *</label>
+              }}>Category *</label>
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
@@ -1048,7 +1170,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>説明</label>
+              }}>Description</label>
               <textarea
                 value={newItem.description}
                 onChange={(e) => setNewItem({...newItem, description: e.target.value})}
@@ -1072,7 +1194,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>場所</label>
+              }}>Place</label>
               <input
                 type="text"
                 value={newItem.location.name}
@@ -1098,7 +1220,7 @@ if (loading) {
                 fontWeight: '600',
                 color: '#002C54',
                 marginBottom: '8px'
-              }}>期限</label>
+              }}>Deadline</label>
               <input
                 type="date"
                 value={newItem.deadline}
@@ -1120,33 +1242,112 @@ if (loading) {
               justifyContent: 'space-between'
             }}>
               <button
-                onClick={async () => {
-                  try {
-                    const { error } = await supabase
-                      .from('taskino_items')
-                      .delete()
-                      .eq('id', editingItem.id);
-                
-                    if (error) throw error;
-                    
-                    await fetchItems();
-                    setIsEditModalOpen(false);
-                    setEditingItem(null);
-                  } catch (error: any) {
-                    console.error('削除に失敗:', error);
-                  }
-                }}
-                style={{
-                  padding: '12px 24px',
-                  border: '2px solid #DC2626',
-                  backgroundColor: 'white',
-                  color: '#DC2626',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >削除</button>
+  onClick={async () => {
+    try {
+      if (showArchived) {
+        // delete
+        const { error } = await supabase
+          .from('taskino_items')
+          .delete()
+          .eq('id', editingItem.id);
+      } else {
+        // archive
+        const { error } = await supabase
+          .from('taskino_items')
+          .update({ archived: true })
+          .eq('id', editingItem.id);
+      }
+
+      if (error) throw error;
+      
+      if (showArchived) {
+        // update archived display
+        const { data, error: fetchError } = await supabase
+          .from('taskino_items')
+          .select('*')
+          .eq('room_id', currentRoom?.id)
+          .eq('archived', true)
+          .order('created_at', { ascending: false });
+
+        if (!fetchError) {
+          const formattedItems = data?.map((item: any) => ({
+            ...item,
+            created_at: new Date(item.created_at).toISOString().split('T')[0],
+            deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
+          })) || [];
+          setItems(formattedItems);
+        }
+      } else {
+        await fetchItems();
+      }
+      
+      setIsEditModalOpen(false);
+      setEditingItem(null);
+    } catch (error: any) {
+      console.error('operation failed:', error);
+    }
+  }}
+  style={{
+    padding: '12px 24px',
+    border: '2px solid #DC2626',
+    backgroundColor: 'white',
+    color: '#DC2626',
+    borderRadius: '8px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer'
+  }}
+>
+  {showArchived ? 'Delete' : 'Archive'}
+</button>
+{showArchived && (
+  <button
+    onClick={async () => {
+      try {
+        const { error } = await supabase
+          .from('taskino_items')
+          .update({ archived: false })
+          .eq('id', editingItem.id);
+
+        if (error) throw error;
+        
+        // update archived display
+        const { data, error: fetchError } = await supabase
+          .from('taskino_items')
+          .select('*')
+          .eq('room_id', currentRoom?.id)
+          .eq('archived', true)
+          .order('created_at', { ascending: false });
+
+        if (!fetchError) {
+          const formattedItems = data?.map((item: any) => ({
+            ...item,
+            created_at: new Date(item.created_at).toISOString().split('T')[0],
+            deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
+          })) || [];
+          setItems(formattedItems);
+        }
+        
+        setIsEditModalOpen(false);
+        setEditingItem(null);
+      } catch (error: any) {
+        console.error('restore failed:', error);
+      }
+    }}
+    style={{
+      padding: '12px 24px',
+      border: '2px solid #10B981',
+      backgroundColor: 'white',
+      color: '#10B981',
+      borderRadius: '8px',
+      fontSize: '16px',
+      fontWeight: '600',
+      cursor: 'pointer'
+    }}
+  >
+      Restore
+  </button>
+)}
               
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button
@@ -1164,7 +1365,7 @@ if (loading) {
                     fontWeight: '600',
                     cursor: 'pointer'
                   }}
-                >キャンセル</button>
+                >Cancel</button>
                 
                 <button
                   onClick={async () => {
@@ -1187,7 +1388,7 @@ if (loading) {
                         setIsEditModalOpen(false);
                         setEditingItem(null);
                       } catch (error: any) {
-                        console.error('更新に失敗:', error);
+                        console.error('update failed:', error);
                       }
                     }
                   }}
@@ -1201,7 +1402,7 @@ if (loading) {
                     fontWeight: '600',
                     cursor: newItem.title.trim() ? 'pointer' : 'not-allowed'
                   }}
-                >保存</button>
+                >Save</button>
               </div>
             </div>
           </div>
@@ -1242,7 +1443,7 @@ if (loading) {
                 fontWeight: 'bold',
                 color: '#002C54',
                 margin: 0
-              }}>QRコードで共有</h2>
+            }}>Share with QR Code</h2>
               <button
                 onClick={() => setShowQR(false)}
                 style={{
@@ -1317,7 +1518,7 @@ function RoomSelector() {
       if (error) throw error;
       setRooms(data || []);
     } catch (error) {
-      console.error('ルーム取得エラー:', error);
+      console.error('room fetch error:', error);
     }
   };
 
@@ -1333,7 +1534,7 @@ function RoomSelector() {
       if (error) throw error;
       navigate(`/room/${shareCode}`);
     } catch (error) {
-      console.error('ルーム作成エラー:', error);
+      console.error('room create error:', error);
     }
   };
 
@@ -1349,51 +1550,31 @@ function RoomSelector() {
         <h1 style={{ fontSize: '32px', marginBottom: '32px', textAlign: 'center' }}>taskino</h1>
         
         <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ marginBottom: '16px' }}>新しいルームを作成</h2>
+          <h2 style={{ marginBottom: '16px' }}>Create New Room</h2>
           <input
             type="text"
             value={newRoomName}
             onChange={(e) => setNewRoomName(e.target.value)}
-            placeholder="ルーム名を入力"
+            placeholder="Enter room name"
             style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '8px', border: 'none', color: '#002c54' }}
           />
           <button onClick={createRoom} style={{ padding: '12px 24px', backgroundColor: '#EFB509', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            作成
+            Create
           </button>
         </div>
 
         <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ marginBottom: '16px' }}>ルームに参加</h2>
+          <h2 style={{ marginBottom: '16px' }}>Join Room</h2>
           <input
             type="text"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value)}
-            placeholder="共有コードを入力"
+            placeholder="Enter share code"
             style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '8px', border: 'none', color: '#002c54' }}
           />
           <button onClick={joinRoom} style={{ padding: '12px 24px', backgroundColor: '#EFB509', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            参加
+            Join
           </button>
-        </div>
-
-        <div>
-          <h2 style={{ marginBottom: '16px' }}>最近のルーム</h2>
-          {rooms.map(room => (
-            <div
-              key={room.id}
-              onClick={() => navigate(`/room/${room.share_code}`)}
-              style={{
-                padding: '16px',
-                backgroundColor: 'white',
-                marginBottom: '8px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                color: '#002C54'
-              }}
-            >
-              {room.name}
-            </div>
-          ))}
         </div>
       </div>
     </div>
