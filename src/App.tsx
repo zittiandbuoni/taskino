@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useParams, useNavigate } from 'react-router-dom';
-import { Plus, MapPin, Calendar, Users, Search, Menu, Plane, UtensilsCrossed, ShoppingBag, Palette, CheckSquare, Share2, Copy } from 'lucide-react';
+import { Plus, MapPin, Calendar, Search, UtensilsCrossed, ShoppingBag, Palette, CheckSquare, Share2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase } from './supabase';
+import './App.css';
 
 declare global {
   interface Window {
@@ -97,6 +98,15 @@ const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // fetch data from Supabase
   const fetchItems = async () => {
@@ -422,7 +432,6 @@ if (loading) {
       
       <button 
         onClick={async () => {
-          console.log('archive button clicked');
           const newShowArchived = !showArchived;
           setShowArchived(newShowArchived);
           
@@ -478,35 +487,16 @@ if (loading) {
   </div>
 </header>
 
-      <div style={{ maxWidth: '1024px', margin: '0 auto', padding: '24px 16px' }}>
-        {/* Search Bar */}
-        <div style={{ position: 'relative', marginBottom: '24px' }}>
-          <Search size={20} style={{ 
-            position: 'absolute',
-            left: '12px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: '#CD7213'
-          }} />
+    <div className="main-content"> 
+{/* Search Bar */}
+<div className="search-bar-container">   
+          <Search size={20} className="search-icon" />  
           <input
             type="text"
             placeholder="Search items"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              paddingLeft: '40px',
-              paddingRight: '16px',
-              paddingTop: '12px',
-              paddingBottom: '12px',
-              backgroundColor: 'rgba(255, 255, 255, 0.95)',
-              borderRadius: '12px',
-              border: 'none',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-              fontSize: '16px',
-              color: '#002C54',
-              outline: 'none'
-            }}
+            className="search-input"             // 
           />
         </div>
 
@@ -516,7 +506,9 @@ if (loading) {
           gap: '8px',
           marginBottom: '24px',
           overflowX: 'auto',
-          paddingBottom: '8px'
+          paddingBottom: '8px',
+          paddingLeft: '20px',
+          paddingRight: '20px'
         }}>
           {categories.map((category) => (
             <button
@@ -546,187 +538,95 @@ if (loading) {
           ))}
         </div>
 
-        {/* Items Grid */}
-        <div style={{
-          display: 'grid',
-          gap: '16px',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          marginBottom: '80px'
-        }}>
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => {
-                setEditingItem(item);
-                setNewItem({
-                  title: item.title,
-                  description: item.description || '',
-                  category: item.category as 'go' | 'eat' | 'buy' | 'do' | 'other',
-                  location: item.location || { name: '', address: '' },
-                  deadline: item.deadline || '',
-                  createdBy: item.created_by || ''
-                });
-                setIsEditModalOpen(true);
-              }}
-              style={{
-                backgroundColor: 'white',
-                borderRadius: '12px',
-                padding: '20px',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                opacity: item.completed ? 0.7 : 1,
-                transition: 'all 0.2s ease',
-                cursor: 'pointer'
-              }}
-            >
-              {/* Header */}
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                marginBottom: '12px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '8px',
-                    background: 'linear-gradient(135deg, #FFF3E3, #FFE4B5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    {React.createElement(getCategoryIcon(item.category), { 
-                      size: 16, 
-                      color: '#CD7213'
-                    })}
-                  </div>
-                  <span style={{
-                    fontSize: '12px',
-                    padding: '4px 12px',
-                    borderRadius: '20px',
-                    backgroundColor: '#EFB509',
-                    color: '#002C54',
-                    fontWeight: '600'
-                  }}>
-                    {categories.find(cat => cat.id === item.category)?.label}
-                  </span>
-                </div>
-                <div onClick={async (e) => {
-    e.stopPropagation();
-    try {
-      const { error } = await supabase
-        .from('taskino_items')
-        .update({ completed: !item.completed })
-        .eq('id', item.id);
-      
-      if (error) throw error;
-      await fetchItems();
-    } catch (error: any) {
-      console.error('failed to update completed status:', error);
-    }
-  }}
-  style={{
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  border: '2px solid',
-                  borderColor: item.completed ? '#10B981' : '#CD7213',
-                  backgroundColor: item.completed ? '#10B981' : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  color: 'white'
-                }}>
-                  {item.completed && '✓'}
-                </div>
-              </div>
-
-              {/* Content */}
-              <h3 style={{
-                fontWeight: 'bold',
-                fontSize: '18px',
-                marginBottom: '8px',
-                color: '#002C54',
-                textDecoration: item.completed ? 'line-through' : 'none'
-              }}>
-                {item.title}
-              </h3>
-              
-              {item.description && (
-                <p style={{
-                  fontSize: '14px',
-                  marginBottom: '12px',
-                  opacity: 0.8,
-                  fontWeight: '500',
-                  lineHeight: '1.5',
-                  color: '#16253D'
-                }}>
-                  {item.description}
-                </p>
-              )}
-
-              {/* Meta Info */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {item.location && (
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#CD7213'
-                  }}>
-                    <MapPin size={14} />
-                    <span>{item.location.name}</span>
-                  </div>
-                )}
-                
-                {item.deadline && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#EFB509'
-                  }}>
-                    <Calendar size={14} />
-                    <span>{item.deadline}</span>
-                  </div>
-                )}
-
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingTop: '8px',
-                  borderTop: '1px solid rgba(22, 37, 61, 0.1)',
-                  marginTop: '8px'
-                }}>
-                  <span style={{
-  fontSize: '12px',
-  opacity: 0.6,
-  fontWeight: '600',
-  color: '#002C54'
-}}>
-  {item.created_by} added
-</span>
-<span style={{
-  fontSize: '12px',
-  opacity: 0.4,
-  color: '#16253D'
-}}>
-  {item.created_at}
-</span>
-                </div>
-              </div>
-            </div>
-          ))}
+       {/* Items Grid */}
+<div className="items-grid">
+  {filteredItems.map((item) => (
+    <div
+      key={item.id}
+      onClick={() => {
+        setEditingItem(item);
+        setNewItem({
+          title: item.title,
+          description: item.description || '',
+          category: item.category as 'go' | 'eat' | 'buy' | 'do' | 'other',
+          location: item.location || { name: '', address: '' },
+          deadline: item.deadline || '',
+          createdBy: item.created_by || ''
+        });
+        setIsEditModalOpen(true);
+      }}
+      className={`item-card ${item.completed ? 'completed' : ''}`}
+    >
+      <div className="item-card-header">
+        <div className="item-card-category">
+          <div className="item-card-category-icon">
+            {React.createElement(getCategoryIcon(item.category), { 
+              size: 18,
+              color: '#CD7213'
+            })}
+          </div>
+          <span className="item-card-category-label">
+            {categories.find(cat => cat.id === item.category)?.label}
+          </span>
         </div>
+        <div 
+          className="item-card-checkbox"
+          onClick={async (e) => {
+            e.stopPropagation();
+            try {
+              const { error } = await supabase
+                .from('taskino_items')
+                .update({ completed: !item.completed })
+                .eq('id', item.id);
+              
+              if (error) throw error;
+              await fetchItems();
+            } catch (error: any) {
+              console.error('failed to update completed status:', error);
+            }
+          }}
+        >
+          {item.completed && '✓'}
+        </div>
+      </div>
 
+      <h3 className="item-card-title">
+        {item.title}
+      </h3>
+      
+      {item.description && (
+        <p className="item-card-description">
+          {item.description}
+        </p>
+      )}
+
+      <div className="item-card-meta">
+        {item.location && (
+          <div className="meta-info location">
+            <MapPin size={14} />
+            <span>{item.location.name}</span>
+          </div>
+        )}
+        
+        {item.deadline && (
+          <div className="meta-info deadline">
+            <Calendar size={14} />
+            <span>{item.deadline}</span>
+          </div>
+        )}
+
+        <div className="item-card-footer">
+          <span className="footer-created-by">
+            {item.created_by} added
+          </span>
+          <span className="footer-created-at">
+            {item.created_at}
+          </span>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
         {/* Empty State */}
         {filteredItems.length === 0 && (
           <div style={{ textAlign: 'center', paddingTop: '48px', paddingBottom: '48px' }}>
@@ -1499,7 +1399,7 @@ function App() {
 }
 
 function RoomSelector() {
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [_rooms, setRooms] = useState<Room[]>([]);
   const [newRoomName, setNewRoomName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const navigate = useNavigate();

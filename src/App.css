@@ -1,66 +1,262 @@
-.App {
-  text-align: center;
-}
+/* ===== taskino アプリケーションのスタイル ===== */
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
+.taskino-app-container {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  background-color: #16253D;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-.App-link {
-  color: #61dafb;
+/* --- Header Styles --- */
+.app-header {
+  position: sticky; top: 0; z-index: 50; padding: 16px;
+  background-color: #002C54; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+.header-container {
+  max-width: 1024px; margin: 0 auto; display: flex;
+  align-items: center; justify-content: space-between;
+}
+.header-title-group { display: flex; align-items: center; gap: 12px; }
+.header-back-button {
+  padding: 8px; color: rgba(255, 255, 255, 0.8); background-color: transparent;
+  border: none; border-radius: 8px; cursor: pointer;
+}
+.header-title { font-size: 28px; font-weight: bold; color: white; letter-spacing: -0.5px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-action-button {
+  display: flex; align-items: center; gap: 4px; padding: 6px 12px;
+  background-color: rgba(255, 255, 255, 0.2); color: white; border: none;
+  border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.header-action-button.share-button, .header-action-button.archive-button-active {
+  background-color: #EFB509; color: #002C54;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-/* --- Base Styles --- */
+/* --- Main Content & Layout --- */
 .main-content {
-  max-width: 1024px;
-  margin: 0 auto;
-  padding: 24px 16px; /* PC/タブレット用の余白 */
+  max-width: 1024px; 
+  margin: 0 auto; 
+  padding: 24px 20px 80px 20px; /* 左右に余白追加、下部にFAB用余白 */
+}
+@media (max-width: 768px) {
+  .main-content { padding-top: 20px; padding-bottom: 20px; }
 }
 
+/* --- Search Bar (Full-width version) --- */
+.search-bar-container {
+  position: relative; margin-bottom: 24px;
+  margin-left: -16px; margin-right: -16px;
+}
+.search-icon {
+  position: absolute; left: 32px; top: 50%;
+  transform: translateY(-50%); color: #9e9e9e; pointer-events: none;
+}
+.search-input {
+  box-sizing: border-box; width: 100%; border: none; font-size: 16px;
+  font-weight: 500; background-color: #f0f2f5; color: #002C54;
+  padding: 18px 20px 18px 60px; border-radius: 0;
+  transition: all 0.2s ease-in-out; outline: none;
+}
+.search-input:focus {
+  background-color: white; border-bottom: 2px solid #EFB509; padding-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .search-bar-container { margin-left: -12px; margin-right: -12px; }
+  .search-icon { left: 24px; }
+  .search-input { padding-left: 52px; }
+}
+
+/* --- Category Filters --- */
+.category-filters {
+  display: flex; gap: 8px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 8px;
+  -ms-overflow-style: none; scrollbar-width: none;
+}
+.category-filters::-webkit-scrollbar { display: none; }
+.category-button {
+  flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+  border-radius: 20px; border: 2px solid transparent; background-color: rgba(255, 255, 255, 0.1);
+  color: #EFB509; font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s ease; outline: none;
+}
+.category-button span { white-space: nowrap; }
+.category-button.active {
+  border-color: #EFB509; background-color: #EFB509; color: #002C54;
+}
+
+/* --- Items Grid --- */
 .items-grid {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  margin-bottom: 80px;
+  gap: 20px; /* 16px → 20px */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 320px → 280px */
+  margin-bottom: 20px; /* 80px → 20px */
+}
+@media (max-width: 768px) {
+  .items-grid {
+    grid-template-columns: 1fr; /* モバイルは1列固定 */
+    gap: 16px;
+  }
 }
 
-/* --- Responsive Styles for Mobile --- */
-/* 画面の横幅が 768px 以下の場合に適用されるスタイル */
-@media (max-width: 768px) {
-  .main-content {
-    padding: 20px 12px; /* スマホ用の余白（左右を16px→12pxに） */
-  }
+/* --- Item Card --- */
+.item-card {
+  /* width や maxWidth の指定は絶対に含めないでください */
+  background-color: white;
+  border-radius: 12px;
+  padding: 20px; /* 元の大きいpaddingに戻します */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.item-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
 
-  .items-grid {
-    /* グリッドを1列表示に強制する */
-    grid-template-columns: 1fr;
-    /* アイテム間の隙間を少し狭くする */
-    gap: 12px;
-  }
+/* (これより下の .item-card-header などの細かいスタイルは、あなたが貼り付けてくれたもののままでOKです) */
+.item-card.completed { opacity: 0.7; }
+.item-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+.item-card-category { display: flex; align-items: center; gap: 8px; }
+.item-card-category-icon {
+  width: 32px; height: 32px; border-radius: 8px; display: flex;
+  align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #FFF3E3, #FFE4B5);
+}
+.item-card-category-label {
+  font-size: 12px; padding: 4px 12px; border-radius: 20px;
+  background-color: #EFB509; color: #002C54; font-weight: 600;
+}
+.item-card-checkbox {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #CD7213;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 12px; color: white;
+}
+.item-card.completed .item-card-checkbox { border-color: #10B981; background-color: #10B981; }
+.item-card-title {
+  font-weight: bold; font-size: 18px; margin-bottom: 8px; color: #002C54;
+}
+.item-card.completed .item-card-title { text-decoration: line-through; }
+.item-card-description {
+  font-size: 14px; margin-bottom: 12px; opacity: 0.8;
+  font-weight: 500; line-height: 1.5; color: #16253D;
+}
+.item-card-meta { display: flex; flex-direction: column; gap: 8px; }
+.meta-info { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+.meta-info.location { color: #CD7213; }
+.meta-info.deadline { color: #EFB509; }
+.item-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 8px; border-top: 1px solid rgba(22, 37, 61, 0.1); margin-top: 8px;
+}
+.footer-created-by { font-size: 12px; opacity: 0.6; font-weight: 600; color: #002C54; }
+.footer-created-at { font-size: 12px; opacity: 0.4; color: #16253D; }
+
+/* --- Empty State --- */
+.empty-state { text-align: center; padding-top: 48px; padding-bottom: 48px; }
+.empty-state-icon { font-size: 48px; margin-bottom: 16px; }
+.empty-state-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: white; }
+.empty-state-text { font-size: 14px; opacity: 0.6; font-weight: 500; color: white; }
+
+/* --- Floating Action Button (FAB) --- */
+.fab {
+  position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
+  border-radius: 50%; background-color: #EFB509; border: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); display: flex;
+  align-items: center; justify-content: center; cursor: pointer;
+  transition: all 0.2s ease; outline: none;
+}
+/* ===== Modal Styles (Complete Version) ===== */
+
+/* --- Modal Base --- */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 16px;
+}
+.modal-content {
+  background-color: white; border-radius: 16px; padding: 24px;
+  max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+.modal-content.qr-modal {
+  max-width: 400px; text-align: center; padding: 32px;
+}
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px;
+}
+.modal-title {
+  font-size: 24px; font-weight: bold; color: #002C54; margin: 0;
+}
+.modal-close-button {
+  background: none; border: none; font-size: 24px;
+  cursor: pointer; color: #666; padding: 4px; line-height: 1;
+}
+
+/* --- Modal Form Elements --- */
+.modal-form-group {
+  margin-bottom: 20px;
+}
+.modal-label {
+  display: block; font-size: 14px; font-weight: 600;
+  color: #002C54; margin-bottom: 8px;
+}
+.modal-input, .modal-textarea {
+  width: 100%; padding: 12px; border: 2px solid #E5E5E5;
+  border-radius: 8px; font-size: 16px; outline: none;
+  box-sizing: border-box; transition: border-color 0.2s;
+}
+.modal-input:focus, .modal-textarea:focus {
+  border-color: #EFB509;
+}
+.modal-textarea {
+  resize: vertical; min-height: 80px;
+}
+
+/* --- Modal Category Selector --- */
+.modal-category-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}
+.modal-category-button {
+  padding: 8px 12px; border: 2px solid #E5E5E5; background-color: white;
+  color: #666; border-radius: 20px; font-size: 12px; font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  gap: 4px; transition: all 0.2s;
+}
+.modal-category-button.active {
+  border-color: #EFB509; background-color: #EFB509; color: #002C54;
+}
+
+/* --- Modal Action Buttons --- */
+.modal-actions {
+  display: flex; gap: 12px; justify-content: space-between; align-items: center;
+  margin-top: 32px;
+}
+.modal-actions.end {
+  justify-content: flex-end;
+}
+.modal-actions-left, .modal-actions-right {
+  display: flex; gap: 12px;
+}
+.modal-button {
+  padding: 12px 24px; border-radius: 8px; font-size: 16px;
+  font-weight: 600; cursor: pointer; border: 2px solid transparent;
+  white-space: nowrap;
+}
+.modal-button.primary {
+  background-color: #EFB509; color: #002C54; border-color: #EFB509;
+}
+.modal-button.primary:disabled {
+  background-color: #CCC; color: #666; border-color: #CCC; cursor: not-allowed;
+}
+.modal-button.secondary {
+  background-color: white; color: #666; border-color: #E5E5E5;
+}
+.modal-button.danger {
+  background-color: white; color: #DC2626; border-color: #DC2626;
+}
+.modal-button.success {
+  background-color: white; color: #10B981; border-color: #10B981;
 }
