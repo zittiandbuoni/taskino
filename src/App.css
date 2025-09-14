@@ -1,9 +1,65 @@
-/* ===== taskino アプリケーションのスタイル ===== */
-
+/* --- Global & Base Styles --- */
 .taskino-app-container {
   min-height: 100vh;
   background-color: #16253D;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #16253D;
+  color: white;
+}
+.loading-screen h2 {
+  color: #EFB509;
+}
+
+/* --- Room Selector Styles --- */
+.room-selector-container {
+  min-height: 100vh;
+  background-color: #16253D;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+}
+.app-title {
+  font-size: 32px;
+  color: white;
+  margin: 0;
+}
+.room-selector-box {
+  width: 100%;
+  max-width: 500px;
+  color: white;
+}
+.room-selector-box h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+.room-selector-input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: none;
+  color: #002c54;
+  box-sizing: border-box;
+}
+.room-selector-button {
+  padding: 12px 24px;
+  background-color: #EFB509;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #002c54;
 }
 
 /* --- Header Styles --- */
@@ -30,18 +86,21 @@
 .header-action-button.share-button, .header-action-button.archive-button-active {
   background-color: #EFB509; color: #002C54;
 }
+@media (max-width: 400px) {
+  .action-button-text { display: none; }
+}
 
 /* --- Main Content & Layout --- */
 .main-content {
   max-width: 1024px; 
   margin: 0 auto; 
-  padding: 24px 20px 80px 20px; /* 左右に余白追加、下部にFAB用余白 */
+  padding: 24px 16px 80px 16px;
 }
 @media (max-width: 768px) {
-  .main-content { padding-top: 20px; padding-bottom: 20px; }
+  .main-content { padding: 20px 12px 80px 12px; }
 }
 
-/* --- Search Bar (Full-width version) --- */
+/* --- Search Bar --- */
 .search-bar-container {
   position: relative; margin-bottom: 24px;
   margin-left: -16px; margin-right: -16px;
@@ -82,38 +141,27 @@
   border-color: #EFB509; background-color: #EFB509; color: #002C54;
 }
 
-/* --- Items Grid --- */
+/* --- Items Grid & Cards --- */
 .items-grid {
-  display: grid;
-  gap: 20px; /* 16px → 20px */
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 320px → 280px */
-  margin-bottom: 20px; /* 80px → 20px */
+  display: grid; gap: 16px; margin-bottom: 80px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 @media (max-width: 768px) {
-  .items-grid {
-    grid-template-columns: 1fr; /* モバイルは1列固定 */
-    gap: 16px;
-  }
+  .items-grid { grid-template-columns: 1fr; gap: 12px; }
 }
 
-/* --- Item Card --- */
 .item-card {
-  /* width や maxWidth の指定は絶対に含めないでください */
-  background-color: white;
-  border-radius: 12px;
-  padding: 20px; /* 元の大きいpaddingに戻します */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: all 0.2s ease;
-  cursor: pointer;
+  position: relative;
+  background-color: white; border-radius: 12px; padding: 20px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease; cursor: pointer;
 }
-.item-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
-}
-
-/* (これより下の .item-card-header などの細かいスタイルは、あなたが貼り付けてくれたもののままでOKです) */
 .item-card.completed { opacity: 0.7; }
+.item-card-image {
+  width: calc(100% + 40px);
+  height: 150px; object-fit: cover; border-radius: 12px 12px 0 0;
+  margin: -20px -20px 12px -20px;
+}
 .item-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
 .item-card-category { display: flex; align-items: center; gap: 8px; }
 .item-card-category-icon {
@@ -138,6 +186,7 @@
 .item-card-description {
   font-size: 14px; margin-bottom: 12px; opacity: 0.8;
   font-weight: 500; line-height: 1.5; color: #16253D;
+  max-height: 84px; overflow-y: auto; word-break: break-all;
 }
 .item-card-meta { display: flex; flex-direction: column; gap: 8px; }
 .meta-info { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
@@ -150,23 +199,28 @@
 .footer-created-by { font-size: 12px; opacity: 0.6; font-weight: 600; color: #002C54; }
 .footer-created-at { font-size: 12px; opacity: 0.4; color: #16253D; }
 
-/* --- Empty State --- */
+/* --- Empty State & FAB --- */
 .empty-state { text-align: center; padding-top: 48px; padding-bottom: 48px; }
 .empty-state-icon { font-size: 48px; margin-bottom: 16px; }
 .empty-state-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: white; }
 .empty-state-text { font-size: 14px; opacity: 0.6; font-weight: 500; color: white; }
 
-/* --- Floating Action Button (FAB) --- */
 .fab {
-  position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px;
-  border-radius: 50%; background-color: #EFB509; border: none;
+  position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+  border-radius: 28px; background-color: #EFB509; color: #002C54;
+  font-size: 16px; font-weight: 600; border: none;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); display: flex;
-  align-items: center; justify-content: center; cursor: pointer;
-  transition: all 0.2s ease; outline: none;
+  align-items: center; gap: 6px; justify-content: center;
+  cursor: pointer; transition: all 0.2s ease; outline: none;
 }
-/* ===== Modal Styles (Complete Version) ===== */
+@keyframes pulse {
+  0% { transform: scale(1); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
+  50% { transform: scale(1.05); box-shadow: 0 8px 24px rgba(239, 181, 9, 0.4); }
+  100% { transform: scale(1); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); }
+}
+.fab { animation: pulse 2s ease-in-out 2; }
 
-/* --- Modal Base --- */
+/* --- Modal Styles --- */
 .modal-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background-color: rgba(0, 0, 0, 0.6);
@@ -178,85 +232,52 @@
   max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
-.modal-content.qr-modal {
-  max-width: 400px; text-align: center; padding: 32px;
-}
-.modal-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 24px;
-}
-.modal-title {
-  font-size: 24px; font-weight: bold; color: #002C54; margin: 0;
-}
+.modal-content.qr-modal { max-width: 400px; text-align: center; padding: 32px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.modal-title { font-size: 24px; font-weight: bold; color: #002C54; margin: 0; }
 .modal-close-button {
   background: none; border: none; font-size: 24px;
   cursor: pointer; color: #666; padding: 4px; line-height: 1;
 }
-
-/* --- Modal Form Elements --- */
-.modal-form-group {
-  margin-bottom: 20px;
-}
-.modal-label {
-  display: block; font-size: 14px; font-weight: 600;
-  color: #002C54; margin-bottom: 8px;
-}
+.modal-form-group { margin-bottom: 20px; }
+.modal-form-group-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-label { display: block; font-size: 14px; font-weight: 600; color: #002C54; margin-bottom: 8px; }
 .modal-input, .modal-textarea {
   width: 100%; padding: 12px; border: 2px solid #E5E5E5;
   border-radius: 8px; font-size: 16px; outline: none;
   box-sizing: border-box; transition: border-color 0.2s;
 }
-.modal-input:focus, .modal-textarea:focus {
-  border-color: #EFB509;
-}
-.modal-textarea {
-  resize: vertical; min-height: 80px;
-}
-
-/* --- Modal Category Selector --- */
-.modal-category-selector {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 8px;
-}
+.modal-input:focus, .modal-textarea:focus { border-color: #EFB509; }
+.modal-textarea { resize: vertical; min-height: 80px; }
+.modal-category-selector { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
 .modal-category-button {
   padding: 8px 12px; border: 2px solid #E5E5E5; background-color: white;
   color: #666; border-radius: 20px; font-size: 12px; font-weight: 600;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   gap: 4px; transition: all 0.2s;
 }
-.modal-category-button.active {
-  border-color: #EFB509; background-color: #EFB509; color: #002C54;
-}
-
-/* --- Modal Action Buttons --- */
-.modal-actions {
-  display: flex; gap: 12px; justify-content: space-between; align-items: center;
-  margin-top: 32px;
-}
-.modal-actions.end {
-  justify-content: flex-end;
-}
-.modal-actions-left, .modal-actions-right {
-  display: flex; gap: 12px;
-}
+.modal-category-button.active { border-color: #EFB509; background-color: #EFB509; color: #002C54; }
+.modal-actions { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-top: 32px; }
+.modal-actions.end { justify-content: flex-end; }
+.modal-actions-left, .modal-actions-right { display: flex; gap: 12px; }
 .modal-button {
   padding: 12px 24px; border-radius: 8px; font-size: 16px;
-  font-weight: 600; cursor: pointer; border: 2px solid transparent;
-  white-space: nowrap;
+  font-weight: 600; cursor: pointer; border: 2px solid transparent; white-space: nowrap;
 }
-.modal-button.primary {
-  background-color: #EFB509; color: #002C54; border-color: #EFB509;
+.modal-button.primary { background-color: #EFB509; color: #002C54; border-color: #EFB509; }
+.modal-button.primary:disabled { background-color: #CCC; color: #666; border-color: #CCC; cursor: not-allowed; }
+.modal-button.secondary { background-color: white; color: #666; border-color: #E5E5E5; }
+.modal-button.danger { background-color: white; color: #DC2626; border-color: #DC2626; }
+.modal-button.success { background-color: white; color: #10B981; border-color: #10B981; }
+.modal-button.small { padding: 8px 16px; font-size: 14px; }
+.modal-image-preview {
+  box-sizing: border-box; width: 100%; max-height: 200px;
+  border-radius: 8px; object-fit: cover; margin-bottom: 12px; border: 1px solid #E5E5E5;
 }
-.modal-button.primary:disabled {
-  background-color: #CCC; color: #666; border-color: #CCC; cursor: not-allowed;
+.modal-file-input-label {
+  box-sizing: border-box; display: block; width: 100%; text-align: center;
+  padding: 12px; border: 2px dashed #E5E5E5; border-radius: 8px;
+  cursor: pointer; color: #666; font-weight: 600; transition: all 0.2s;
 }
-.modal-button.secondary {
-  background-color: white; color: #666; border-color: #E5E5E5;
-}
-.modal-button.danger {
-  background-color: white; color: #DC2626; border-color: #DC2626;
-}
-.modal-button.success {
-  background-color: white; color: #10B981; border-color: #10B981;
-}
+.modal-file-input-label:hover { border-color: #EFB509; background-color: #FFFBEB; }
+.image-edit-actions { display: flex; gap: 8px; margin-top: 8px; }

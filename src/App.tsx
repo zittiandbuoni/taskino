@@ -1,29 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, useParams, useNavigate } from 'react-router-dom';
-import { Plus, MapPin, Calendar, Search, UtensilsCrossed, ShoppingBag, Palette, CheckSquare, Share2 } from 'lucide-react';
+import { Plus, MapPin, Calendar, Search, UtensilsCrossed, ShoppingBag, Palette, CheckSquare, Share2, QrCode, Archive } from 'lucide-react';
 import QRCode from 'qrcode';
 import { supabase } from './supabase';
 import './App.css';
 
-declare global {
-  interface Window {
-    google: any;
-  }
-}
-
+// TypeScriptの型定義
 interface TaskinoItem {
   id: string;
   title: string;
   description?: string;
   category: 'go' | 'eat' | 'buy' | 'do' | 'other';
-  location?: {
-    name: string;
-    address: string;
-  };
+  location?: { name: string; address: string; };
   completed: boolean;
-  deadline?: string;
+  start_at?: string;
+  end_at?: string;
   created_by: string;
   created_at: string;
+  image_url?: string;
 }
 interface Room {
   id: string;
@@ -31,14 +25,18 @@ interface Room {
   share_code: string;
   created_at: string;
 }
+
+// カテゴリーの定義
 const categories = [
-  { id: 'all', label: 'All', icon: Search, color: '#EFB509' },
-  { id: 'go', label: 'To Go', icon: MapPin, color: '#EFB509' },
-  { id: 'eat', label: 'To Eat', icon: UtensilsCrossed, color: '#EFB509' },
-  { id: 'buy', label: 'To Buy', icon: ShoppingBag, color: '#EFB509' },
-  { id: 'do', label: 'To Do', icon: CheckSquare, color: '#EFB509' },
-  { id: 'other', label: 'Other', icon: Palette, color: '#EFB509' },
+  { id: 'all', label: 'All', icon: Search },
+  { id: 'go', label: 'To Go', icon: MapPin },
+  { id: 'eat', label: 'To Eat', icon: UtensilsCrossed },
+  { id: 'buy', label: 'To Buy', icon: ShoppingBag },
+  { id: 'do', label: 'To Do', icon: CheckSquare },
+  { id: 'other', label: 'Other', icon: Palette },
 ];
+
+// QRコード表示用のコンポーネント
 function QRCodeComponent({ shareCode, currentRoom }: { shareCode?: string, currentRoom: Room | null }) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
@@ -46,1393 +44,591 @@ function QRCodeComponent({ shareCode, currentRoom }: { shareCode?: string, curre
     if (shareCode && currentRoom) {
       const shareUrl = `${window.location.origin}/room/${shareCode}`;
       QRCode.toDataURL(shareUrl, {
-        width: 256,
-        margin: 2,
-        color: {
-          dark: '#002C54',
-          light: '#FFFFFF'
-        }
-      }).then(url => {
-        setQrCodeUrl(url);
-      });
+        width: 256, margin: 2, color: { dark: '#002C54', light: '#FFFFFF' }
+      }).then(url => setQrCodeUrl(url));
     }
   }, [shareCode, currentRoom]);
 
-  if (!qrCodeUrl) {
-    return <div>Generating QR Code...</div>;
-  }
+  if (!qrCodeUrl) return <div className="loading-text">Generating QR Code...</div>;
 
   return (
     <div>
       <img src={qrCodeUrl} alt="QR Code" style={{ width: '256px', height: '256px' }} />
       <p style={{ marginTop: '16px', color: '#666', fontSize: '14px' }}>
-        Share this QR code to join the room
+        Share this QR code to join the room.
       </p>
       <p style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
-        room: {currentRoom?.name}
+        Room: {currentRoom?.name}
       </p>
     </div>
   );
 }
+
+// メインのアプリケーションコンポーネント
 function TaskinoApp() {
   const { shareCode } = useParams<{ shareCode: string }>();
   const navigate = useNavigate();
+  const [items, setItems] = useState<TaskinoItem[]>([]);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newItem, setNewItem] = useState({
-    title: '',
-    description: '',
-    category: 'go' as 'go' | 'eat' | 'buy' | 'do' | 'other',
-    location: { name: '', address: '' },
-    deadline: '',
-    createdBy: ''
-  });
-  
-  const [items, setItems] = useState<TaskinoItem[]>([]);
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState<string | null>(null);
-  
-  const [editingItem, setEditingItem] = useState<TaskinoItem | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<TaskinoItem | null>(null);
+  
+  const [newItem, setNewItem] = useState({
+    title: '', description: '', category: 'go' as 'go' | 'eat' | 'buy' | 'do' | 'other',
+    location: { name: '', address: '' }, start_at: '', end_at: '', createdBy: ''
+  });
+
   const [showQR, setShowQR] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isImageMarkedForDeletion, setIsImageMarkedForDeletion] = useState(false);
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // fetch data from Supabase
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async (archived = false) => {
     if (!currentRoom) return;
-    
     try {
       setLoading(true);
-      const { data, error } = await supabase
-       .from('taskino_items')
-       .select('*')
-       .eq('room_id', currentRoom.id)
-       .eq('archived', false)
-       .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    const formattedItems = data?.map((item: any) => ({
-      id: item.id,
-      title: item.title,
-      description: item.description,
-      category: item.category,
-      location: item.location,
-      completed: item.completed,
-      deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined,
-      created_by: item.created_by,
-      created_at: new Date(item.created_at).toISOString().split('T')[0]
-    })) || [];
-
-    setItems(formattedItems);
-  } catch (error: any) {
-    console.error('failed to fetch data', error);
-    setError(error.message);
-  } finally {
-    setLoading(false);
-  }
-};
-<button 
-  onClick={async () => {
-    console.log('archive button clicked');
-    const newShowArchived = !showArchived;
-    setShowArchived(newShowArchived);
-    
-    if (newShowArchived) {
-      try {
-        setLoading(true);
-        console.log('archive items fetch started', currentRoom?.id);
-        const { data, error } = await supabase
-          .from('taskino_items')
-          .select('*')
-          .eq('room_id', currentRoom?.id)
-          .eq('archived', true)
-          .order('created_at', { ascending: false });
-  
-        console.log('archive items fetch result:', { data, error }); // ← この行を追加
-  
-        if (error) throw error;
-  
-        const formattedItems = data?.map((item: any) => ({
-          ...item,
-          created_at: new Date(item.created_at).toISOString().split('T')[0],
-          deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
-        })) || [];
-  
-        console.log('archive items formatted:', formattedItems); // ← この行を追加
-        setItems(formattedItems);
-      } catch (error: any) {
-        console.error('archive items fetch failed:', error);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      fetchItems();
+      const { data, error: fetchError } = await supabase
+        .from('taskino_items')
+        .select('*')
+        .eq('room_id', currentRoom.id)
+        .eq('archived', archived)
+        .order('created_at', { ascending: false });
+      if (fetchError) throw fetchError;
+      setItems(data || []);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-  }}
-    style={{
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '8px 16px',
-    backgroundColor: showArchived ? '#EFB509' : 'rgba(255, 255, 255, 0.2)',
-    color: showArchived ? '#002C54' : 'white',
-    border: 'none',
-    borderRadius: '20px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    marginLeft: '8px'
-  }}
->
-  📁 {showArchived ? 'Normal' : 'Archive'}
-</button>
-const fetchRoom = async () => {
-  if (!shareCode) return;
+  }, [currentRoom]);
+
+  const fetchRoom = useCallback(async () => {
+    if (!shareCode) return;
+    try {
+      const { data, error: fetchError } = await supabase.from('rooms').select('*').eq('share_code', shareCode).single();
+      if (fetchError) throw fetchError;
+      setCurrentRoom(data);
+    } catch (err) {
+      setError('Room not found');
+    }
+  }, [shareCode]);
+
+  useEffect(() => {
+    fetchRoom();
+  }, [fetchRoom]);
+
+  useEffect(() => {
+    if (currentRoom) {
+      fetchItems(showArchived);
+    }
+  }, [currentRoom, showArchived, fetchItems]);
   
-  try {
-    const { data, error } = await supabase
-      .from('rooms')
-      .select('*')
-      .eq('share_code', shareCode)
-      .single();
-    
-    if (error) throw error;
-    setCurrentRoom(data);
-  } catch (error) {
-    console.error('room fetch error:', error);
-    setError('room not found');
-  }
-};
+  useEffect(() => {
+    if (!currentRoom) return;
+    const channel = supabase
+      .channel(`room_${currentRoom.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'taskino_items', filter: `room_id=eq.${currentRoom.id}` },
+        () => fetchItems(showArchived)
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentRoom, showArchived, fetchItems]);
 
-useEffect(() => {
-  fetchRoom();
-}, [shareCode]);
-
-useEffect(() => {
-  if (currentRoom) {
-    fetchItems();
-  }
-}, [currentRoom]);
-// realtime subscription
-useEffect(() => {
-  if (!currentRoom) return;
-
-  const subscription = supabase
-    .channel(`room_${currentRoom.id}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'taskino_items',
-        filter: `room_id=eq.${currentRoom.id}`
-      },
-      (payload) => {
-        console.log('realtime update:', payload);
-        
-        if (payload.eventType === 'INSERT') {
-          const newItem = {
-            ...payload.new,
-            created_at: new Date(payload.new.created_at).toISOString().split('T')[0],
-            deadline: payload.new.deadline ? new Date(payload.new.deadline).toISOString().split('T')[0] : undefined
-          } as TaskinoItem;
-          
-          setItems(prevItems => {
-            // duplicate check
-            if (prevItems.some(item => item.id === newItem.id)) {
-              return prevItems;
-            }
-            return [newItem, ...prevItems];
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const updatedItem = {
-            ...payload.new,
-            created_at: new Date(payload.new.created_at).toISOString().split('T')[0],
-            deadline: payload.new.deadline ? new Date(payload.new.deadline).toISOString().split('T')[0] : undefined
-          } as TaskinoItem;
-          
-          setItems(prevItems => 
-            prevItems.map(item => 
-              item.id === updatedItem.id ? updatedItem : item
-            )
-          );
-        } else if (payload.eventType === 'DELETE') {
-          setItems(prevItems => 
-            prevItems.filter(item => item.id !== payload.old.id)
-          );
-        }
-      }
-    )
-    .subscribe();
-
-  // cleanup
-  return () => {
-    subscription.unsubscribe();
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      setSelectedFile(file);
+      setIsImageMarkedForDeletion(false);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
   };
-}, [currentRoom]);
-// error display
-if (error) {
-  return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#16253D',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white'
-    }}>
-      <div style={{ textAlign: 'center' }}>
-        <h2 style={{ color: '#EFB509', marginBottom: '16px' }}>Error</h2>
-        <p>{error}</p>
-        <button onClick={() => { setError(null); fetchItems(); }}>Retry</button>
-      </div>
-    </div>
-  );
-}
 
-// loading display
-if (loading) {
-  return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#16253D',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white'
-    }}>
-      <p>Loading...</p>
-    </div>
-  );
-}
+  const handleImageDelete = () => {
+    setPreviewUrl(null);
+    setSelectedFile(null);
+    setIsImageMarkedForDeletion(true);
+  };
+  
+  const resetForm = () => {
+    setNewItem({ title: '', description: '', category: 'go', location: { name: '', address: '' }, start_at: '', end_at: '', createdBy: '' });
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setIsImageMarkedForDeletion(false);
+  }
 
-  const filteredItems = items.filter(item => {
-    const categoryMatch = selectedCategory === 'all' || item.category === selectedCategory;
-    const searchMatch = item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       item.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    return categoryMatch && searchMatch;
-  });
+  const filteredItems = items.filter(item => 
+    (selectedCategory === 'all' || item.category === selectedCategory) &&
+    (item.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+     item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+     item.location?.name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   const getCategoryIcon = (category: string) => {
-    const categoryData = categories.find(cat => cat.id === category);
-    return categoryData?.icon || Search;
+    return categories.find(cat => cat.id === category)?.icon || Search;
   };
 
+  if (loading && items.length === 0) {
+    return <div className="loading-screen"><p>Loading...</p></div>;
+  }
+  if (error) {
+    return <div className="loading-screen"><h2>Error</h2><p>{error}</p></div>;
+  }
+
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#16253D',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    }}>
-{/* Header */}
-<header style={{ 
-  position: 'sticky',
-  top: 0,
-  zIndex: 50,
-  padding: '16px',
-  backgroundColor: '#002C54',
-  boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)'
-}}>
-  <div style={{ 
-    maxWidth: '1024px',
-    margin: '0 auto',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-      <button 
-        onClick={() => navigate('/')}
-        style={{
-          padding: '8px',
-          color: 'rgba(255, 255, 255, 0.8)',
-          backgroundColor: 'transparent',
-          border: 'none',
-          borderRadius: '8px',
-          cursor: 'pointer'
-        }}
-      >
-        ← BACK
-      </button>
-      <div style={{ 
-        fontSize: '28px',
-        fontWeight: 'bold',
-        color: 'white',
-        letterSpacing: '-0.5px'
-      }}>taskino</div>
-    </div>
-    
-    {/* button group */}
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      gap: '8px',
-      flexWrap: 'wrap'
-    }}>
-      <button 
-        onClick={() => {
-          console.log('QR button clicked');
-          setShowQR(!showQR);
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '6px 12px',
-          backgroundColor: 'rgba(255, 255, 255, 0.2)',
-          color: 'white',
-          border: 'none',
-          borderRadius: '16px',
-          fontSize: '12px',
-          fontWeight: '600',
-          cursor: 'pointer'
-        }}
-      >
-        📱
-      </button>
-      
-      <button 
-        onClick={() => {
-          const shareUrl = `${window.location.origin}/room/${shareCode}`;
-          navigator.clipboard.writeText(shareUrl).then(() => {
-            alert('Share URL copied to clipboard!');
-          }).catch(() => {
-            prompt('Please copy the following url:', shareUrl);
-          });
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '6px 12px',
-          backgroundColor: '#EFB509',
-          color: '#002C54',
-          border: 'none',
-          borderRadius: '16px',
-          fontSize: '12px',
-          fontWeight: '600',
-          cursor: 'pointer'
-        }}
-      >
-        <Share2 size={14} />
-        Share
-      </button>
-      
-      <button 
-        onClick={async () => {
-          const newShowArchived = !showArchived;
-          setShowArchived(newShowArchived);
-          
-          if (newShowArchived) {
-            try {
-              setLoading(true);
-              console.log('archive items fetch started', currentRoom?.id);
-              const { data, error } = await supabase
-                .from('taskino_items')
-                .select('*')
-                .eq('room_id', currentRoom?.id)
-                .eq('archived', true)
-                .order('created_at', { ascending: false });
+    <div className="taskino-app-container">
+      <header className="app-header">
+        <div className="header-container">
+          <div className="header-title-group">
+            <button onClick={() => navigate('/')} className="header-back-button">
+              ← BACK
+            </button>
+            <div className="header-title">taskino</div>
+          </div>
+          <div className="header-actions">
+            <button onClick={() => setShowQR(!showQR)} className="header-action-button" title="Share QR Code">
+              <QrCode size={18} />
+            </button>
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/room/${shareCode}`;
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                  alert('Share URL copied to clipboard!');
+                });
+              }}
+              className="header-action-button share-button"
+            >
+              <Share2 size={14} />
+              <span className="action-button-text">Share</span>
+            </button>
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={`header-action-button ${showArchived ? 'archive-button-active' : ''}`}
+              title={showArchived ? 'View Active Items' : 'View Archived Items'}
+            >
+              <Archive size={18} />
+            </button>
+          </div>
+        </div>
+      </header>
 
-              console.log('archive items fetch result:', { data, error });
-
-              if (error) throw error;
-
-              const formattedItems = data?.map((item: any) => ({
-                ...item,
-                created_at: new Date(item.created_at).toISOString().split('T')[0],
-                deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
-              })) || [];
-
-              console.log('formatted items:', formattedItems);
-              setItems(formattedItems);
-            } catch (error: any) {
-              console.error('archive items fetch failed:', error);
-            } finally {
-              setLoading(false);
-            }
-          } else {
-            fetchItems();
-          }
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-          padding: '6px 12px',
-          backgroundColor: showArchived ? '#EFB509' : 'rgba(255, 255, 255, 0.2)',
-          color: showArchived ? '#002C54' : 'white',
-          border: 'none',
-          borderRadius: '16px',
-          fontSize: '12px',
-          fontWeight: '600',
-          cursor: 'pointer'
-        }}
-      >
-        📁
-      </button>
-    </div>
-  </div>
-</header>
-
-    <div className="main-content"> 
-{/* Search Bar */}
-<div className="search-bar-container">   
-          <Search size={20} className="search-icon" />  
+      <div className="main-content">
+        <div className="search-bar-container">
+          <Search size={20} className="search-icon" />
           <input
             type="text"
             placeholder="Search items"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="search-input"             // 
+            className="search-input"
           />
         </div>
 
-        {/* Category Filters */}
-        <div style={{ 
-          display: 'flex',
-          gap: '8px',
-          marginBottom: '24px',
-          overflowX: 'auto',
-          paddingBottom: '8px',
-          paddingLeft: '20px',
-          paddingRight: '20px'
-        }}>
+        <div className="category-filters">
           {categories.map((category) => (
             <button
               key={category.id}
               onClick={() => setSelectedCategory(category.id)}
-              style={{
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: '20px',
-                border: '2px solid',
-                borderColor: selectedCategory === category.id ? '#EFB509' : 'transparent',
-                backgroundColor: selectedCategory === category.id ? '#EFB509' : 'rgba(255, 255, 255, 0.1)',
-                color: selectedCategory === category.id ? '#002C54' : '#EFB509',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                outline: 'none'
-              }}
+              className={`category-button ${selectedCategory === category.id ? 'active' : ''}`}
             >
               <category.icon size={16} />
-              <span style={{ whiteSpace: 'nowrap' }}>{category.label}</span>
+              <span>{category.label}</span>
             </button>
           ))}
         </div>
 
-       {/* Items Grid */}
-<div className="items-grid">
-  {filteredItems.map((item) => (
-    <div
-      key={item.id}
-      onClick={() => {
-        setEditingItem(item);
-        setNewItem({
-          title: item.title,
-          description: item.description || '',
-          category: item.category as 'go' | 'eat' | 'buy' | 'do' | 'other',
-          location: item.location || { name: '', address: '' },
-          deadline: item.deadline || '',
-          createdBy: item.created_by || ''
-        });
-        setIsEditModalOpen(true);
-      }}
-      className={`item-card ${item.completed ? 'completed' : ''}`}
-    >
-      <div className="item-card-header">
-        <div className="item-card-category">
-          <div className="item-card-category-icon">
-            {React.createElement(getCategoryIcon(item.category), { 
-              size: 18,
-              color: '#CD7213'
-            })}
-          </div>
-          <span className="item-card-category-label">
-            {categories.find(cat => cat.id === item.category)?.label}
-          </span>
+        <div className="items-grid">
+          {filteredItems.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => {
+                setEditingItem(item);
+                setNewItem({
+                  title: item.title,
+                  description: item.description || '',
+                  category: item.category,
+                  location: item.location || { name: '', address: '' },
+                  start_at: item.start_at ? new Date(item.start_at).toISOString().slice(0, 16) : '',
+                  end_at: item.end_at ? new Date(item.end_at).toISOString().slice(0, 16) : '',
+                  createdBy: item.created_by || ''
+                });
+                setPreviewUrl(item.image_url || null);
+                setSelectedFile(null);
+                setIsImageMarkedForDeletion(false);
+                setIsEditModalOpen(true);
+              }}
+              className={`item-card ${item.completed ? 'completed' : ''}`}
+            >
+              {item.image_url && (
+                <img src={item.image_url} alt={item.title} className="item-card-image" />
+              )}
+              <div className="item-card-header">
+                <div className="item-card-category">
+                  <div className="item-card-category-icon">
+                    {React.createElement(getCategoryIcon(item.category), { size: 16, color: '#CD7213' })}
+                  </div>
+                  <span className="item-card-category-label">
+                    {categories.find(cat => cat.id === item.category)?.label}
+                  </span>
+                </div>
+                <div
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await supabase.from('taskino_items').update({ completed: !item.completed }).eq('id', item.id);
+                  }}
+                  className="item-card-checkbox"
+                >
+                  {item.completed && '✓'}
+                </div>
+              </div>
+              <h3 className="item-card-title">{item.title}</h3>
+              {item.description && (
+                <p className="item-card-description">{item.description}</p>
+              )}
+              <div className="item-card-meta">
+                {item.location && <div className="meta-info location"><MapPin size={14} /><span>{item.location.name}</span></div>}
+                {item.start_at && (
+                  <div className="meta-info deadline">
+                    <Calendar size={14} />
+                    <span>
+                      {new Date(item.start_at).toLocaleDateString('ja-JP')}
+                      {new Date(item.start_at).toTimeString().slice(0, 5) !== '00:00' && ` ${new Date(item.start_at).toTimeString().slice(0, 5)}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="item-card-footer">
+                <span className="footer-created-by">{item.created_by} added</span>
+                <span className="footer-created-at">{item.created_at}</span>
+              </div>
+            </div>
+          ))}
         </div>
-        <div 
-          className="item-card-checkbox"
-          onClick={async (e) => {
-            e.stopPropagation();
-            try {
-              const { error } = await supabase
-                .from('taskino_items')
-                .update({ completed: !item.completed })
-                .eq('id', item.id);
-              
-              if (error) throw error;
-              await fetchItems();
-            } catch (error: any) {
-              console.error('failed to update completed status:', error);
-            }
-          }}
-        >
-          {item.completed && '✓'}
-        </div>
-      </div>
 
-      <h3 className="item-card-title">
-        {item.title}
-      </h3>
-      
-      {item.description && (
-        <p className="item-card-description">
-          {item.description}
-        </p>
-      )}
-
-      <div className="item-card-meta">
-        {item.location && (
-          <div className="meta-info location">
-            <MapPin size={14} />
-            <span>{item.location.name}</span>
-          </div>
-        )}
-        
-        {item.deadline && (
-          <div className="meta-info deadline">
-            <Calendar size={14} />
-            <span>{item.deadline}</span>
-          </div>
-        )}
-
-        <div className="item-card-footer">
-          <span className="footer-created-by">
-            {item.created_by} added
-          </span>
-          <span className="footer-created-at">
-            {item.created_at}
-          </span>
-        </div>
-      </div>
-    </div>
-  ))}
-</div>
-        {/* Empty State */}
-        {filteredItems.length === 0 && (
-          <div style={{ textAlign: 'center', paddingTop: '48px', paddingBottom: '48px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
-            <h3 style={{
-              fontSize: '18px',
-              fontWeight: 'bold',
-              marginBottom: '8px',
-              color: 'white'
-            }}>
-              No items found
-            </h3>
-            <p style={{
-              fontSize: '14px',
-              opacity: 0.6,
-              fontWeight: '500',
-              color: 'white'
-            }}>
-              Please change the search criteria or add a new item
+        {filteredItems.length === 0 && !loading && (
+          <div className="empty-state">
+            <div className="empty-state-icon">📋</div>
+            <h3 className="empty-state-title">{showArchived ? 'Archive is empty' : 'No items found'}</h3>
+            <p className="empty-state-text">
+              {showArchived ? 'There are no archived items.' : 'Please add a new item or change filters.'}
             </p>
           </div>
         )}
       </div>
 
-      {/* Add Item Modal */}
       {isModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '16px'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            padding: '24px',
-            maxWidth: '500px',
-            width: '100%',
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{
-                fontSize: '24px',
-                fontWeight: 'bold',
-                color: '#002C54',
-                margin: 0
-              }}>Add New Item</h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#666',
-                  padding: '4px'
-                }}
-              >×</button>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2 className="modal-title">Add New Item</h2>
+              <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="modal-close-button">×</button>
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Title *</label>
-              <input
-                type="text"
-                value={newItem.title}
-                onChange={(e) => setNewItem({...newItem, title: e.target.value})}
-                placeholder="Example: New cafe in Shibuya"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Title *</label>
+              <input type="text" value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="modal-input" />
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Category *</label>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
-                gap: '8px'
-              }}>
+            <div className="modal-form-group">
+              <label className="modal-label">Category *</label>
+              <div className="modal-category-selector">
                 {categories.slice(1).map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => setNewItem({...newItem, category: category.id as any})}
-                    style={{
-                      padding: '8px 12px',
-                      border: '2px solid',
-                      borderColor: newItem.category === category.id ? '#EFB509' : '#E5E5E5',
-                      backgroundColor: newItem.category === category.id ? '#EFB509' : 'white',
-                      color: newItem.category === category.id ? '#002C54' : '#666',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s'
-                    }}
-                  >
+                  <button key={category.id} onClick={() => setNewItem({ ...newItem, category: category.id as any })} className={`modal-category-button ${newItem.category === category.id ? 'active' : ''}`}>
                     <category.icon size={14} />
                     {category.label}
                   </button>
                 ))}
               </div>
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Description</label>
-              <textarea
-                value={newItem.description}
-                onChange={(e) => setNewItem({...newItem, description: e.target.value})}
-                placeholder="Please enter a detailed description"
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none',
-                  resize: 'vertical',
-                  minHeight: '80px'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Description</label>
+              <textarea value={newItem.description} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} className="modal-textarea" />
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-  <label style={{
-    display: 'block',
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#002C54',
-    marginBottom: '8px'
-  }}>Place</label>
-<input
-  type="text"
-  value={newItem.location.name}
-  onChange={(e) => setNewItem({
-    ...newItem, 
-    location: {...newItem.location, name: e.target.value}
-  })}
-  placeholder="Example: Shibuya Station, Tokyo Tower"
-  style={{
-    width: '100%',
-    padding: '12px',
-    border: '2px solid #E5E5E5',
-    borderRadius: '8px',
-    fontSize: '16px',
-    outline: 'none'
-  }}
-/>
+            <div className="modal-form-group">
+              <label className="modal-label">Image</label>
+              {previewUrl && <img src={previewUrl} alt="Preview" className="modal-image-preview" />}
+              <label htmlFor="file-upload" className="modal-file-input-label">{uploading ? 'Uploading...' : 'Select Image'}</label>
+              <input id="file-upload" type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} disabled={uploading} />
             </div>
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Date</label>
-              <input
-                type="date"
-                value={newItem.deadline}
-                onChange={(e) => setNewItem({...newItem, deadline: e.target.value})}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Place</label>
+              <input type="text" value={newItem.location.name} onChange={(e) => setNewItem({ ...newItem, location: { ...newItem.location, name: e.target.value } })} className="modal-input" />
             </div>
-            <div style={{ marginBottom: '32px' }}>
-  <label style={{
-    display: 'block',
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#002C54',
-    marginBottom: '8px'
-  }}>Your name *</label>
-  <input
-    type="text"
-    value={newItem.createdBy}
-    onChange={(e) => setNewItem({...newItem, createdBy: e.target.value})}
-    placeholder="Your name"
-    style={{
-      width: '100%',
-      padding: '12px',
-      border: '2px solid #E5E5E5',
-      borderRadius: '8px',
-      fontSize: '16px',
-      outline: 'none'
-    }}
-  />
-</div>
-
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end'
-            }}>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                style={{
-                  padding: '12px 24px',
-                  border: '2px solid #E5E5E5',
-                  backgroundColor: 'white',
-                  color: '#666',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >Cancel</button>
+            <div className="modal-form-group-inline">
+              <div style={{ flex: 2 }}>
+                <label className="modal-label">Date</label>
+                <input
+                  type="date"
+                  value={newItem.start_at ? newItem.start_at.split('T')[0] : ''}
+                  onChange={(e) => {
+                    const timePart = newItem.start_at?.split('T')[1] || '';
+                    setNewItem({ ...newItem, start_at: e.target.value ? `${e.target.value}${timePart ? `T${timePart}` : ''}` : '' });
+                  }}
+                  className="modal-input"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="modal-label">Time (Opt)</label>
+                <input
+                  type="time"
+                  value={newItem.start_at ? newItem.start_at.split('T')[1] : ''}
+                  onChange={(e) => {
+                    const datePart = newItem.start_at?.split('T')[0];
+                    if (datePart) {
+                      setNewItem({ ...newItem, start_at: `${datePart}T${e.target.value}` });
+                    }
+                  }}
+                  className="modal-input"
+                />
+              </div>
+            </div>
+            <div className="modal-form-group">
+              <label className="modal-label">Your name *</label>
+              <input type="text" value={newItem.createdBy} onChange={(e) => setNewItem({ ...newItem, createdBy: e.target.value })} className="modal-input" />
+            </div>
+            <div className="modal-actions end">
+              <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="modal-button secondary">Cancel</button>
               <button
                 onClick={async () => {
-                  console.log('add button clicked', newItem);
-                  
-                  if (newItem.title.trim() && newItem.createdBy.trim()) {                    try {
-                      console.log('Supabase sending...');
-                      const insertData = {
-                        title: newItem.title,
-                        description: newItem.description || null,
-                        category: newItem.category,
-                        location: newItem.location.name ? {
-                          name: newItem.location.name,
-                          address: newItem.location.address || ''
-                        } : null,
-                        deadline: newItem.deadline || null,
-                        created_by: newItem.createdBy || 'Anonymous',
-                        room_id: currentRoom?.id
-                      };
-                      
-                      console.log('send data:', insertData);
-                      
-                      const { data, error } = await supabase
-                        .from('taskino_items')
-                        .insert([insertData])
-                        .select();
-                
-                      console.log('Supabase response:', { data, error });
-                      
-                      if (error) throw error;
-                      
-                      await fetchItems();
-                      setIsModalOpen(false);
-                      setNewItem({
-                        title: '',
-                        description: '',
-                        category: 'go',
-                        location: { name: '', address: '' },
-                        deadline: '',
-                        createdBy: ''
-                      });
-                    } catch (error: any) {
-                      console.error('add error:', error);
-                      alert('add failed: ' + error.message);
+                  if (!newItem.title.trim() || !newItem.createdBy.trim()) return;
+                  try {
+                    setUploading(true);
+                    let imageUrl: string | null = null;
+                    if (selectedFile) {
+                      const fileExt = selectedFile.name.split('.').pop();
+                      const filePath = `${Date.now()}.${fileExt}`;
+                      await supabase.storage.from('taskino_images').upload(filePath, selectedFile);
+                      const { data: urlData } = supabase.storage.from('taskino_images').getPublicUrl(filePath);
+                      imageUrl = urlData.publicUrl;
                     }
-                  } else {
-                    console.log('title is empty');
+                    const { title, description, category, location, start_at, end_at, createdBy } = newItem;
+                    const insertData = { title, description, category, location: location.name ? location : null, start_at: start_at || null, end_at: end_at || null, created_by: createdBy, room_id: currentRoom?.id, image_url: imageUrl };
+                    await supabase.from('taskino_items').insert([insertData]).select();
+                    setIsModalOpen(false);
+                    resetForm();
+                  } catch (error: any) {
+                    alert('Error: ' + error.message);
+                  } finally {
+                    setUploading(false);
                   }
                 }}
-                style={{
-                  padding: '12px 24px',
-                  border: 'none',
-                  backgroundColor: (newItem.title.trim() && newItem.createdBy.trim()) ? '#EFB509' : '#CCC',
-                  color: (newItem.title.trim() && newItem.createdBy.trim()) ? '#002C54' : '#666',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  cursor: (newItem.title.trim() && newItem.createdBy.trim()) ? 'pointer' : 'not-allowed'
-                }}
-              >Add</button>
+                className="modal-button primary"
+                disabled={!newItem.title.trim() || !newItem.createdBy.trim() || uploading}
+              >
+                {uploading ? 'Saving...' : 'Add'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit Item Modal */}
       {isEditModalOpen && editingItem && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '16px'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            padding: '24px',
-            maxWidth: '500px',
-            width: '100%',
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{
-                fontSize: '24px',
-                fontWeight: 'bold',
-                color: '#002C54',
-                margin: 0
-              }}>Edit Item</h2>
-              <button
-                onClick={() => {
-                  setIsEditModalOpen(false);
-                  setEditingItem(null);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#666',
-                  padding: '4px'
-                }}
-              >×</button>
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2 className="modal-title">Edit Item</h2>
+              <button onClick={() => {setIsEditModalOpen(false); setEditingItem(null);}} className="modal-close-button">×</button>
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Title *</label>
-              <input
-                type="text"
-                value={newItem.title}
-                onChange={(e) => setNewItem({...newItem, title: e.target.value})}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Title *</label>
+              <input type="text" value={newItem.title} onChange={(e) => setNewItem({ ...newItem, title: e.target.value })} className="modal-input" />
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Category *</label>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))',
-                gap: '8px'
-              }}>
+            <div className="modal-form-group">
+              <label className="modal-label">Category *</label>
+              <div className="modal-category-selector">
                 {categories.slice(1).map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => setNewItem({...newItem, category: category.id as any})}
-                    style={{
-                      padding: '8px 12px',
-                      border: '2px solid',
-                      borderColor: newItem.category === category.id ? '#EFB509' : '#E5E5E5',
-                      backgroundColor: newItem.category === category.id ? '#EFB509' : 'white',
-                      color: newItem.category === category.id ? '#002C54' : '#666',
-                      borderRadius: '20px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s'
-                    }}
-                  >
+                  <button key={category.id} onClick={() => setNewItem({ ...newItem, category: category.id as any })} className={`modal-category-button ${newItem.category === category.id ? 'active' : ''}`}>
                     <category.icon size={14} />
                     {category.label}
                   </button>
                 ))}
               </div>
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Description</label>
-              <textarea
-                value={newItem.description}
-                onChange={(e) => setNewItem({...newItem, description: e.target.value})}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none',
-                  resize: 'vertical',
-                  minHeight: '80px'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Description</label>
+              <textarea value={newItem.description} onChange={(e) => setNewItem({ ...newItem, description: e.target.value })} className="modal-textarea" />
             </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Place</label>
-              <input
-                type="text"
-                value={newItem.location.name}
-                onChange={(e) => setNewItem({
-                  ...newItem, 
-                  location: {...newItem.location, name: e.target.value}
-                })}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Image</label>
+              {previewUrl && <img src={previewUrl} alt="Preview" className="modal-image-preview" />}
+              <div className="image-edit-actions">
+                {previewUrl ? (
+                  <>
+                    <label htmlFor="file-upload-edit" className="modal-button secondary small">Replace Image</label>
+                    <button onClick={handleImageDelete} className="modal-button danger small">Delete Image</button>
+                  </>
+                ) : (
+                  <label htmlFor="file-upload-edit" className="modal-button primary small">Add Image</label>
+                )}
+              </div>
+              <input id="file-upload-edit" type="file" accept="image/*" onChange={handleFileSelect} style={{ display: 'none' }} disabled={uploading} />
             </div>
-
-            <div style={{ marginBottom: '32px' }}>
-              <label style={{
-                display: 'block',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: '#002C54',
-                marginBottom: '8px'
-              }}>Deadline</label>
-              <input
-                type="date"
-                value={newItem.deadline}
-                onChange={(e) => setNewItem({...newItem, deadline: e.target.value})}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #E5E5E5',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  outline: 'none'
-                }}
-              />
+            <div className="modal-form-group">
+              <label className="modal-label">Place</label>
+              <input type="text" value={newItem.location.name} onChange={(e) => setNewItem({ ...newItem, location: { ...newItem.location, name: e.target.value } })} className="modal-input" />
             </div>
-
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'space-between'
-            }}>
-              <button
-  onClick={async () => {
-    try {
-      if (showArchived) {
-        // delete
-        const { error } = await supabase
-          .from('taskino_items')
-          .delete()
-          .eq('id', editingItem.id);
-      } else {
-        // archive
-        const { error } = await supabase
-          .from('taskino_items')
-          .update({ archived: true })
-          .eq('id', editingItem.id);
-      }
-
-      if (error) throw error;
-      
-      if (showArchived) {
-        // update archived display
-        const { data, error: fetchError } = await supabase
-          .from('taskino_items')
-          .select('*')
-          .eq('room_id', currentRoom?.id)
-          .eq('archived', true)
-          .order('created_at', { ascending: false });
-
-        if (!fetchError) {
-          const formattedItems = data?.map((item: any) => ({
-            ...item,
-            created_at: new Date(item.created_at).toISOString().split('T')[0],
-            deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
-          })) || [];
-          setItems(formattedItems);
-        }
-      } else {
-        await fetchItems();
-      }
-      
-      setIsEditModalOpen(false);
-      setEditingItem(null);
-    } catch (error: any) {
-      console.error('operation failed:', error);
-    }
-  }}
-  style={{
-    padding: '12px 24px',
-    border: '2px solid #DC2626',
-    backgroundColor: 'white',
-    color: '#DC2626',
-    borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: '600',
-    cursor: 'pointer'
-  }}
->
-  {showArchived ? 'Delete' : 'Archive'}
-</button>
-{showArchived && (
-  <button
-    onClick={async () => {
-      try {
-        const { error } = await supabase
-          .from('taskino_items')
-          .update({ archived: false })
-          .eq('id', editingItem.id);
-
-        if (error) throw error;
-        
-        // update archived display
-        const { data, error: fetchError } = await supabase
-          .from('taskino_items')
-          .select('*')
-          .eq('room_id', currentRoom?.id)
-          .eq('archived', true)
-          .order('created_at', { ascending: false });
-
-        if (!fetchError) {
-          const formattedItems = data?.map((item: any) => ({
-            ...item,
-            created_at: new Date(item.created_at).toISOString().split('T')[0],
-            deadline: item.deadline ? new Date(item.deadline).toISOString().split('T')[0] : undefined
-          })) || [];
-          setItems(formattedItems);
-        }
-        
-        setIsEditModalOpen(false);
-        setEditingItem(null);
-      } catch (error: any) {
-        console.error('restore failed:', error);
-      }
-    }}
-    style={{
-      padding: '12px 24px',
-      border: '2px solid #10B981',
-      backgroundColor: 'white',
-      color: '#10B981',
-      borderRadius: '8px',
-      fontSize: '16px',
-      fontWeight: '600',
-      cursor: 'pointer'
-    }}
-  >
-      Restore
-  </button>
-)}
-              
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button
-                  onClick={() => {
-                    setIsEditModalOpen(false);
-                    setEditingItem(null);
+            {newItem.location.name && (
+              <div className="modal-map-container">
+                <iframe
+                  title={`Map of ${newItem.location.name}`}
+                  width="100%"
+                  height="250"
+                  style={{ border: 0, borderRadius: '8px' }}
+                  loading="lazy"
+                  allowFullScreen
+                  src={`https://www.google.com/maps/embed/v1/place?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}&q=${encodeURIComponent(newItem.location.name)}`}
+                ></iframe>
+              </div>
+            )}
+            <div className="modal-form-group-inline">
+              <div style={{ flex: 2 }}>
+                <label className="modal-label">Date</label>
+                <input
+                  type="date"
+                  value={newItem.start_at ? newItem.start_at.split('T')[0] : ''}
+                  onChange={(e) => {
+                    const timePart = newItem.start_at?.split('T')[1] || '';
+                    setNewItem({ ...newItem, start_at: e.target.value ? `${e.target.value}${timePart ? `T${timePart}` : ''}` : '' });
                   }}
-                  style={{
-                    padding: '12px 24px',
-                    border: '2px solid #E5E5E5',
-                    backgroundColor: 'white',
-                    color: '#666',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                >Cancel</button>
-                
-                <button
-                  onClick={async () => {
-                    if (newItem.title.trim()) {
-                      try {
-                        const { error } = await supabase
-                          .from('taskino_items')
-                          .update({
-                            title: newItem.title,
-                            description: newItem.description || null,
-                            category: newItem.category,
-                            location: newItem.location.name ? newItem.location : null,
-                            deadline: newItem.deadline || null
-                          })
-                          .eq('id', editingItem.id);
-                  
-                        if (error) throw error;
-                        
-                        await fetchItems();
-                        setIsEditModalOpen(false);
-                        setEditingItem(null);
-                      } catch (error: any) {
-                        console.error('update failed:', error);
-                      }
+                  className="modal-input"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="modal-label">Time (Opt)</label>
+                <input
+                  type="time"
+                  value={newItem.start_at ? newItem.start_at.split('T')[1] : ''}
+                  onChange={(e) => {
+                    const datePart = newItem.start_at?.split('T')[0];
+                    if (datePart) {
+                      setNewItem({ ...newItem, start_at: `${datePart}T${e.target.value}` });
                     }
                   }}
-                  style={{
-                    padding: '12px 24px',
-                    border: 'none',
-                    backgroundColor: newItem.title.trim() ? '#EFB509' : '#CCC',
-                    color: newItem.title.trim() ? '#002C54' : '#666',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    cursor: newItem.title.trim() ? 'pointer' : 'not-allowed'
+                  className="modal-input"
+                />
+              </div>
+            </div>
+            <div className="modal-actions">
+              <div className="modal-actions-left">
+                <button
+                  onClick={async () => {
+                    if (!editingItem) return;
+                    if (window.confirm(showArchived ? 'Permanently delete this item?' : 'Archive this item?')) {
+                      try {
+                        if (showArchived) {
+                          await supabase.from('taskino_items').delete().eq('id', editingItem.id);
+                        } else {
+                          await supabase.from('taskino_items').update({ archived: true }).eq('id', editingItem.id);
+                        }
+                        setIsEditModalOpen(false);
+                      } catch (error) { alert('Operation failed.'); }
+                    }
                   }}
-                >Save</button>
+                  className="modal-button danger"
+                >
+                  {showArchived ? 'Delete' : 'Archive'}
+                </button>
+                {showArchived && (
+                  <button onClick={async () => {
+                    if (!editingItem) return;
+                      try {
+                        await supabase.from('taskino_items').update({ archived: false }).eq('id', editingItem.id);
+                        setIsEditModalOpen(false);
+                      } catch (error) { alert('Restore failed.'); }
+                    }}
+                    className="modal-button success"
+                  >
+                    Restore
+                  </button>
+                )}
+              </div>
+              <div className="modal-actions-right">
+                <button onClick={() => {setIsEditModalOpen(false); setEditingItem(null);}} className="modal-button secondary">Cancel</button>
+                <button
+                 onClick={async () => {
+                    if (!newItem.title.trim() || !editingItem) return;
+                    try {
+                      setUploading(true);
+                      let imageUrl: string | undefined | null = editingItem.image_url;
+                      if (isImageMarkedForDeletion) {
+                        imageUrl = null;
+                      } else if (selectedFile) {
+                        const fileExt = selectedFile.name.split('.').pop();
+                        const filePath = `${Date.now()}.${fileExt}`;
+                        await supabase.storage.from('taskino_images').upload(filePath, selectedFile);
+                        const { data: urlData } = supabase.storage.from('taskino_images').getPublicUrl(filePath);
+                        imageUrl = urlData.publicUrl;
+                      }
+                      const { title, description, category, location, start_at, end_at } = newItem;
+                      const updateData = { title, description, category, location: location.name ? location : null, start_at: start_at || null, end_at: end_at || null, image_url: imageUrl };
+                      const { error } = await supabase.from('taskino_items').update(updateData).eq('id', editingItem.id);
+                      if (error) throw error;
+                      await fetchItems(showArchived);
+                      setIsEditModalOpen(false);
+                    } catch (error: any) {
+                      alert('Update failed: ' + error.message);
+                    } finally {
+                      setUploading(false);
+                    }
+                  }}
+                  className="modal-button primary"
+                  disabled={!newItem.title.trim() || uploading}
+                >
+                  {uploading ? 'Saving...' : 'Save'}
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
-{/* QR Code Modal */}
-{showQR && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '16px'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            padding: '32px',
-            maxWidth: '400px',
-            width: '100%',
-            textAlign: 'center',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '24px'
-            }}>
-              <h2 style={{
-                fontSize: '24px',
-                fontWeight: 'bold',
-                color: '#002C54',
-                margin: 0
-            }}>Share with QR Code</h2>
-              <button
-                onClick={() => setShowQR(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#666',
-                  padding: '4px'
-                }}
-              >×</button>
+      
+      {showQR && (
+        <div className="modal-overlay">
+          <div className="modal-content qr-modal">
+            <div className="modal-header">
+              <h2 className="modal-title">Share with QR Code</h2>
+              <button onClick={() => setShowQR(false)} className="modal-close-button">×</button>
             </div>
-            
             <QRCodeComponent shareCode={shareCode} currentRoom={currentRoom} />
           </div>
         </div>
       )}
 
-      {/* Floating Action Button */}
-      <button 
-        onClick={() => setIsModalOpen(true)}
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          right: '24px',
-          width: '56px',
-          height: '56px',
-          borderRadius: '50%',
-          backgroundColor: '#EFB509',
-          border: 'none',
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          transition: 'all 0.2s ease',
-          outline: 'none'
-        }}>
-        <Plus size={24} color="#002C54" />
+      <button onClick={() => {
+          resetForm();
+          setIsModalOpen(true);
+        }}
+        className="fab"
+      >
+        <Plus size={20} color="#002C54" />
+        Add
       </button>
     </div>
   );
 }
-function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<RoomSelector />} />
-        <Route path="/room/:shareCode" element={<TaskinoApp />} />
-      </Routes>
-    </Router>
-  );
-}
 
+// Room Selector
 function RoomSelector() {
-  const [_rooms, setRooms] = useState<Room[]>([]);
   const [newRoomName, setNewRoomName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchRooms();
-  }, []);
-
-  const fetchRooms = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      setRooms(data || []);
-    } catch (error) {
-      console.error('room fetch error:', error);
-    }
-  };
-
   const createRoom = async () => {
     if (!newRoomName.trim()) return;
-    
     try {
-      const shareCode = Math.random().toString(36).substring(2, 15);
-      const { error } = await supabase
-        .from('rooms')
-        .insert([{ name: newRoomName, share_code: shareCode }]);
-      
+      const shareCode = Math.random().toString(36).substring(2, 8);
+      const { data, error } = await supabase.from('rooms').insert([{ name: newRoomName, share_code: shareCode }]).select();
       if (error) throw error;
-      navigate(`/room/${shareCode}`);
+      if (data) navigate(`/room/${data[0].share_code}`);
     } catch (error) {
       console.error('room create error:', error);
     }
@@ -1445,39 +641,42 @@ function RoomSelector() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#16253D', padding: '24px' }}>
-      <div style={{ maxWidth: '500px', margin: '0 auto', color: 'white' }}>
-        <h1 style={{ fontSize: '32px', marginBottom: '32px', textAlign: 'center' }}>taskino</h1>
-        
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ marginBottom: '16px' }}>Create New Room</h2>
-          <input
-            type="text"
-            value={newRoomName}
-            onChange={(e) => setNewRoomName(e.target.value)}
-            placeholder="Enter room name"
-            style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '8px', border: 'none', color: '#002c54' }}
-          />
-          <button onClick={createRoom} style={{ padding: '12px 24px', backgroundColor: '#EFB509', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            Create
-          </button>
-        </div>
-
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ marginBottom: '16px' }}>Join Room</h2>
-          <input
-            type="text"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            placeholder="Enter share code"
-            style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '8px', border: 'none', color: '#002c54' }}
-          />
-          <button onClick={joinRoom} style={{ padding: '12px 24px', backgroundColor: '#EFB509', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            Join
-          </button>
-        </div>
+    <div className="room-selector-container">
+      <h1 className="app-title">taskino</h1>
+      <div className="room-selector-box">
+        <h2>Create New Room</h2>
+        <input
+          type="text"
+          value={newRoomName}
+          onChange={(e) => setNewRoomName(e.target.value)}
+          placeholder="Enter room name"
+          className="room-selector-input"
+        />
+        <button onClick={createRoom} className="room-selector-button">Create</button>
+      </div>
+      <div className="room-selector-box">
+        <h2>Join Room</h2>
+        <input
+          type="text"
+          value={joinCode}
+          onChange={(e) => setJoinCode(e.target.value)}
+          placeholder="Enter share code"
+          className="room-selector-input"
+        />
+        <button onClick={joinRoom} className="room-selector-button">Join</button>
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<RoomSelector />} />
+        <Route path="/room/:shareCode" element={<TaskinoApp />} />
+      </Routes>
+    </Router>
   );
 }
 
