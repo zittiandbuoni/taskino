@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, useParams, useNavigate } from 'react-router-dom';
 import { Plus, MapPin, Calendar, Search, UtensilsCrossed, ShoppingBag, Palette, CheckSquare, Share2, Archive, LogIn, UserCircle } from 'lucide-react';
-import QRCode from 'qrcode';
 import { supabase } from './supabase';
 import './App.css';
 
@@ -26,6 +25,11 @@ interface Room {
   share_code: string;
   created_at: string;
 }
+interface Like {
+  id: string;
+  item_id: string;
+  user_id: string;
+}
 
 // カテゴリーの定義
 const categories = [
@@ -36,29 +40,6 @@ const categories = [
   { id: 'do', label: 'To Do', icon: CheckSquare },
   { id: 'other', label: 'Other', icon: Palette },
 ];
-
-// QRコード表示用のコンポーネント
-function QRCodeComponent({ shareCode, currentRoom }: { shareCode?: string, currentRoom: Room | null }) {
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
-  useEffect(() => {
-    if (shareCode && currentRoom) {
-      const shareUrl = `${window.location.origin}/room/${shareCode}`;
-      QRCode.toDataURL(shareUrl, {
-        width: 256, margin: 2, color: { dark: '#002C54', light: '#FFFFFF' }
-      }).then(url => setQrCodeUrl(url));
-    }
-  }, [shareCode, currentRoom]);
-
-  if (!qrCodeUrl) return <div className="loading-text">Generating QR Code...</div>;
-  
-  return (
-    <div className="qr-code-container">
-      <img src={qrCodeUrl} alt="QR Code" />
-      <p>Share this QR code to join the room.</p>
-      <span>Room: {currentRoom?.name}</span>
-    </div>
-  );
-}
 
 // メインのアプリケーションコンポーネント
 function TaskinoApp() {
@@ -87,11 +68,31 @@ function TaskinoApp() {
   const [session, setSession] = useState<any | null>(null);
   const [showTimeInputs, setShowTimeInputs] = useState(false);
   const [isRange, setIsRange] = useState(false);
+  const [likes, setLikes] = useState<Record<string, Like[]>>({});
   
   const currentRoomRef = useRef(currentRoom);
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
+
+  const fetchLikesForItems = useCallback(async (itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+    try {
+      const { data, error: fetchError } = await supabase.from('likes').select('id, item_id, user_id').in('item_id', itemIds);
+      if (fetchError) throw fetchError;
+
+      const likesByItem: Record<string, Like[]> = {};
+      itemIds.forEach(id => { likesByItem[id] = []; });
+      data.forEach(like => {
+        if (likesByItem[like.item_id]) {
+          likesByItem[like.item_id].push(like);
+        }
+      });
+      setLikes(prevLikes => ({ ...prevLikes, ...likesByItem }));
+    } catch (err) {
+      console.error('Error fetching likes:', err);
+    }
+  }, []);
 
   const fetchItems = useCallback(async (archived = false) => {
     if (!currentRoomRef.current) return;
@@ -101,13 +102,18 @@ function TaskinoApp() {
         .from('taskino_items').select('*').eq('room_id', currentRoomRef.current.id)
         .eq('archived', archived).order('created_at', { ascending: false });
       if (fetchError) throw fetchError;
-      setItems(data || []);
+      const fetchedItems = data || [];
+      setItems(fetchedItems);
+      if (fetchedItems.length > 0) {
+        const itemIds = fetchedItems.map(item => item.id);
+        await fetchLikesForItems(itemIds);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchLikesForItems]);
 
   const showArchivedRef = useRef(showArchived);
   useEffect(() => {
@@ -166,14 +172,17 @@ function TaskinoApp() {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
+    
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       cleanupUrl();
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (_event === 'SIGNED_IN') {
         cleanupUrl();
+        
         const checkAndClaimPosts = () => {
           const currentRoomValue = currentRoomRef.current;
           if (currentRoomValue) {
@@ -184,13 +193,20 @@ function TaskinoApp() {
                   supabase.functions.invoke('claim-guest-posts', {
                     body: { guestName, roomId: currentRoomValue.id },
                   }).then(({ error: funcError }) => {
-                    if (funcError) alert(`Error: ${funcError.message}`);
-                    else {
+                    if (funcError) {
+                      alert(`Error: ${funcError.message}`);
+                    } else {
                       alert('Posts have been linked to your account!');
+                      setCurrentUserName(guestName);
                       localStorage.removeItem(`taskino_username_${currentRoomValue.id}`);
                       fetchItems(showArchivedRef.current);
                     }
                   });
+                } else { // このelseの位置が重要
+                  // 「いいえ」を選んだ場合、ゲスト名を削除し、新しい名前の入力を促す
+                  localStorage.removeItem(`taskino_username_${currentRoomValue.id}`);
+                  setCurrentUserName('');
+                  setShowNamePrompt(true);
                 }
               }, 500);
             }
@@ -201,9 +217,12 @@ function TaskinoApp() {
         checkAndClaimPosts();
       }
     });
-    return () => subscription.unsubscribe();
-  }, [fetchItems]);
 
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fetchItems]);
+  
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
@@ -232,6 +251,7 @@ function TaskinoApp() {
       localStorage.setItem(`taskino_username_${currentRoom.id}`, trimmedName);
       setCurrentUserName(trimmedName);
       setShowNamePrompt(false);
+      resetForm(trimmedName); 
     }
   };
 
@@ -241,12 +261,17 @@ function TaskinoApp() {
     setIsImageMarkedForDeletion(true);
   };
   
-  const resetForm = () => {
-    const name = session?.user?.email || currentUserName;
+  const resetForm = (nameToSet?: string) => {
+    // localStorageに保存されたルームごとの名前を最優先で使う
+    const name = currentUserName || session?.user?.user_metadata?.name || session?.user?.email || '';
+
     setNewItem({ 
-      title: '', description: '', category: 'go', 
+      title: '', 
+      description: '', 
+      category: 'go', 
       location: { name: '', address: '' }, 
-      start_at: '', end_at: '', 
+      start_at: '', 
+      end_at: '', 
       createdBy: name
     });
     setSelectedFile(null);
@@ -255,6 +280,22 @@ function TaskinoApp() {
     setShowTimeInputs(false);
     setIsRange(false);
   }
+
+  const handleLikeToggle = async (itemId: string) => {
+    if (!session?.user) {
+      alert('Please log in to like items.');
+      return;
+    }
+    const userId = session.user.id;
+    const existingLike = likes[itemId]?.find(like => like.user_id === userId);
+
+    if (existingLike) {
+      await supabase.from('likes').delete().eq('id', existingLike.id);
+    } else {
+      await supabase.from('likes').insert({ item_id: itemId, user_id: userId });
+    }
+    await fetchLikesForItems([itemId]);
+  };
 
   const filteredItems = items.filter(item => 
     (selectedCategory === 'all' || item.category === selectedCategory) &&
@@ -381,7 +422,12 @@ function TaskinoApp() {
                 </div>
                 <div className="item-card-footer">
                   <span className="footer-created-by">{item.created_by} added</span>
-                  <span className="footer-created-at">{new Date(item.created_at).toLocaleDateString('en-US')}</span>
+                  <div className="like-container">
+                    <button onClick={(e) => { e.stopPropagation(); handleLikeToggle(item.id); }} className={`like-button ${likes[item.id]?.some(like => like.user_id === session?.user?.id) ? 'liked' : ''}`}>
+                      ❤️
+                    </button>
+                    <span className="like-count">{likes[item.id]?.length || 0}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -604,7 +650,7 @@ function TaskinoApp() {
                       } else if (selectedFile) {
                         const fileExt = selectedFile.name.split('.').pop();
                         const filePath = `${Date.now()}.${fileExt}`;
-                        await supabase.storage.from('taskino_images').upload(filePath, selectedFile);
+                        await supabase.storage.from('taskino_items').upload(filePath, selectedFile);
                         const { data: urlData } = supabase.storage.from('taskino_images').getPublicUrl(filePath);
                         imageUrl = urlData.publicUrl;
                       }
@@ -661,7 +707,12 @@ function TaskinoApp() {
         </div>
       )}
 
-      <button onClick={() => { resetForm(); setIsModalOpen(true); }} className="fab">
+<button onClick={() => {
+          resetForm(); // 引数なしで呼ぶ
+          setIsModalOpen(true);
+        }}
+        className="fab"
+      >
         <Plus size={20} color="#002C54" /> Add
       </button>
     </div>

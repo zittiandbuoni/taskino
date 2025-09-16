@@ -173,8 +173,12 @@ body {
 .meta-info.location { color: #CD7213; }
 .meta-info.deadline { color: var(--brand-color); }
 .item-card-footer {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-top: 8px; border-top: 1px solid rgba(22, 37, 61, 0.1); margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid rgba(22, 37, 61, 0.1);
+  margin-top: 8px;
 }
 .footer-created-by { font-size: 12px; opacity: 0.6; font-weight: 600; }
 .footer-created-at { font-size: 12px; opacity: 0.4; }
